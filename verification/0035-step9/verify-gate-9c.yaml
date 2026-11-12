@@ -1,0 +1,84 @@
+---
+# Step 9C: read-only acceptance. No timer changes, no destructive pruning.
+- name: 0035 Step 9C | Source scheduler and preservation gate
+  hosts: mars
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Assert expected active timer schedule and fail-closed source protections
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for timer in btrfs-snapshot-create.timer btrfs-snapshot-prune.timer btrfs-native-push.timer; do
+          test "$(systemctl is-enabled "$timer")" = enabled
+          test "$(systemctl is-active "$timer")" = active
+          echo "PASS: source $timer enabled and active"
+        done
+        for timer in snapper-timeline.timer snapper-boot.timer snapper-cleanup.timer; do
+          enabled=$(systemctl is-enabled "$timer" 2>/dev/null || true)
+          active=$(systemctl is-active "$timer" 2>/dev/null || true)
+          test "$active" = inactive || { echo "BLOCKER: $timer active=$active"; exit 10; }
+          test "$enabled" != enabled || { echo "BLOCKER: $timer enabled"; exit 11; }
+          echo "PASS: legacy $timer not scheduled ($enabled/$active)"
+        done
+        status=$(/usr/local/sbin/btrfs-snapshot-manager status)
+        printf '%s\n' "$status"
+        grep -q 'incomplete_timestamp_sets=0' <<< "$status"
+        grep -q 'diaries_verification=valid' <<< "$status"
+        dry=$(/usr/local/sbin/diaries-snapshot-cleanup --host mars dry-run)
+        printf '%s\n' "$dry"
+        grep -q 'CHECKPOINT-HELD:' <<< "$dry"
+        grep -q 'REPLICATION-PROTECTED:' <<< "$dry"
+        grep -q 'Would delete ' <<< "$dry"
+        echo 'PASS: verified snapshot sets and both protection inventories present; no prune applied'
+        systemctl show btrfs-native-push.service -p Result -p ExecMainStatus -p ActiveState --no-pager
+        result=$(systemctl show btrfs-native-push.service -p Result --value)
+        code=$(systemctl show btrfs-native-push.service -p ExecMainStatus --value)
+        test "$result" = success && test "$code" = 0 || { echo 'BLOCKER: native push last status unsuccessful'; exit 12; }
+        echo 'PASS: latest native push service result successful'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: source_check
+    - ansible.builtin.debug:
+        var: source_check.stdout_lines
+
+- name: 0035 Step 9C | Receiver must remain passive
+  hosts: backup
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check receiver timers disabled and historical and native repositories present
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for timer in btrfs-snapshot-create.timer btrfs-snapshot-prune.timer btrfs-native-push.timer; do
+          enabled=$(systemctl is-enabled "$timer" 2>/dev/null || true)
+          active=$(systemctl is-active "$timer" 2>/dev/null || true)
+          test "$enabled" != enabled && test "$active" != active && test "$active" != activating || { echo "BLOCKER: receiver $timer $enabled/$active"; exit 13; }
+          echo "PASS: receiver $timer $enabled/$active"
+        done
+        test -d /@data/backup
+        test -d /@data/mars-received/.replication-state
+        echo 'PASS: historical repository and native receipt state preserved'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: receiver_check
+    - ansible.builtin.debug:
+        var: receiver_check.stdout_lines
+
+- name: 0035 Step 9C | Production publisher remains unchanged
+  hosts: pluto
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Verify schema-2 publication still exists
+      ansible.builtin.shell: |
+        set -euo pipefail
+        test -d /home/richard/projects/diaries/data/.diaries-backup-generations
+        echo 'PASS: schema-2 published generations remain present'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: publisher_check
+    - ansible.builtin.debug:
+        var: publisher_check.stdout_lines

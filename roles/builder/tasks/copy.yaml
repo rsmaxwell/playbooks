@@ -1,0 +1,102 @@
+---
+
+
+
+- name: builder:copy | Find the IP address of the host
+  ansible.builtin.shell: 
+    cmd:   hostname -I | awk '{print $1}'
+  changed_when: false
+  register: result
+- set_fact:
+    host_address: "{{ result.stdout }}"
+- debug:
+    var: host_address
+
+
+
+- name: builder:copy | Create project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ projects_dir }}"
+    - "{{ builder_project_dir }}"
+    - "{{ builder_project_dir }}/files"
+    - "{{ builder_project_dir }}/scripts"
+    - "{{ builder_project_dir }}/helm"
+    - "{{ builder_project_dir }}/helm/builder"
+    - "{{ builder_project_dir }}/helm/builder/templates"
+    - "{{ builder_project_dir }}/nginx"
+    - "{{ builder_project_dir }}/images"
+    - "{{ builder_project_dir }}/images/diaries-client"
+
+
+- name: builder:copy | Synchronize files
+  ansible.posix.synchronize:
+    src: "sync/"
+    dest: "{{ builder_project_dir }}"
+    rsync_opts:
+      - "--omit-dir-times"
+  register: result
+
+- name: builder:copy | Debug sync output
+  ansible.builtin.debug:
+    var: result.stdout_lines
+
+
+
+- name: builder:copy | Copy locations file to nginx config.d
+  ansible.builtin.copy:
+    src: "misc/{{ item.path }}"
+    dest: "{{ infrastructure_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "nginx/config/files/jenkins.conf", mode: '0664' }
+
+
+
+- name: builder:copy | Template files
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "{{ builder_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "files/cluster.yaml", mode: '0664' }
+    - { path: "files/jenkins.yaml", mode: '0664' }
+    - { path: "files/gradle.properties", mode: '0664' }
+    - { path: "files/settings.xml", mode: '0664' }
+    - { path: "files/maven-repository-info", mode: '0664' }
+    - { path: "scripts/create-jobs.sh", mode: '0744' }
+    - { path: "scripts/update-jenkins-credentials.sh", mode: '0744' }
+    - { path: "scripts/update-jenkins-credentials-test.sh", mode: '0744' }
+    - { path: "scripts/list-jenkins-credentials.sh", mode: '0744' }
+    - { path: "scripts/list-jenkins-credentials-test.sh", mode: '0744' }
+    - { path: "scripts/start.sh", mode: '0744' }
+    - { path: "scripts/stop.sh", mode: '0744' }
+    - { path: "groovy/update-jenkins-credentials.groovy", mode: '0664' }
+    - { path: "groovy/list-jenkins-credentials.groovy", mode: '0664' }
+    - { path: "images/.env", mode: '0664' }
+    - { path: "images/diaries-client/build.sh", mode: '0744' }
+    - { path: "images/jenkins/build.sh", mode: '0744' }
+    - { path: "images/jenkins/Dockerfile", mode: '0644' }
+
+
+
+- name: builder:copy | Install the nginx systemd unit
+  become: true
+  ansible.builtin.template:
+    src: "compose/jenkins-compose.service.j2"
+    dest: "/etc/systemd/system/jenkins-compose.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart systemd
+    - Restart infrastructure stack
+
+- name: builder | Enable Jenkins service at boot
+  become: true
+  ansible.builtin.systemd:
+    name: jenkins-compose.service
+    enabled: true
+    daemon_reload: true

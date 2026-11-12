@@ -1,0 +1,49 @@
+---
+
+- name: install_user_scripts | Create directories
+  ansible.builtin.file:
+    path: "{{ backup_directory }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ normal_user_home }}/scripts/backup"
+    - "{{ normal_user_home }}/scripts/backup/cron"
+    - "{{ normal_user_home }}/scripts/backup/home"
+    - "{{ normal_user_home }}/log/backup"
+  loop_control:
+    loop_var: backup_directory
+
+
+- name: install_user_scripts | Copy scripts
+  ansible.posix.synchronize:
+    # Preserve the mode of each source entry, as in roles/ledger/tasks/copy.yaml.
+    archive: true
+    src: "backup/"
+    dest: "{{ normal_user_home }}/scripts/backup/"
+    rsync_opts:
+      - "--omit-dir-times"
+      - "--exclude=__pycache__/"
+      - "--exclude=*.pyc"
+  register: user_script_sync
+- debug:
+    var: user_script_sync.stdout_lines
+
+
+
+- name: install_user_scripts | Template backup scripts
+  ansible.builtin.template:
+    src: "backup/{{ backup_script }}.j2"
+    dest: "{{ normal_user_home }}/scripts/backup/{{ backup_script }}"
+    mode: "0744"
+  loop:
+    - backup.sh
+    - cron/backup.sh
+    - home/backup.sh
+  loop_control:
+    loop_var: backup_script
+
+
+
+
+- name: Install user backup cron job
+  ansible.builtin.import_tasks: user_backup_cron.yaml

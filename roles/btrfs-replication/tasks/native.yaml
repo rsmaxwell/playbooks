@@ -1,0 +1,30 @@
+---
+# 0045-FEAT: static imports preserve original task order and per-task tags.
+# Do not attach tags or conditions at import level; child tasks retain their own.
+
+- name: Native Btrfs | Validate endpoint, protect source, provision receiver and remove retired sudoers
+  ansible.builtin.import_tasks: endpoint-setup.yaml
+
+- name: Native Btrfs | Validate and preserve receiver checkpoint holds and receipts
+  ansible.builtin.import_tasks: receiver-holds.yaml
+
+- name: Native Btrfs | Install receiver configuration and transaction lock
+  ansible.builtin.import_tasks: receiver-config.yaml
+
+- name: Native Btrfs | Keep retired receiver-side pull executables absent
+  ansible.builtin.import_tasks: retire-legacy-pull.yaml
+
+- name: Native Btrfs | Guard legacy transports and manage source push units and timer
+  ansible.builtin.import_tasks: source-scheduling.yaml
+
+- name: Native Btrfs | Configure receiver retention policy and retired observer security
+  ansible.builtin.import_tasks: receiver-policy.yaml
+
+- name: Native Btrfs | Install shared agreed-parent runtime and status tool
+  ansible.builtin.import_tasks: simplified-runtime.yaml
+
+- name: Native Btrfs | Validate, render and activate receiver pruning when opted in
+  ansible.builtin.import_tasks: receiver-retention.yaml
+
+- name: Native Btrfs | Deploy endpoint-neutral stale-qgroup cleaner
+  ansible.builtin.import_tasks: qgroup-deployment.yaml

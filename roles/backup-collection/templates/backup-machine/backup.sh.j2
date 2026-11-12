@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+
+cd /root/scripts/backup || exit 1
+
+# The machine job writes local backup state and then reads it for the legacy
+# remote push. Holding the same lock prevents a native mars snapshot from
+# racing either phase and serialises it with the normal-user backup job.
+exec 9>>"{{ diaries_pull_repository_lock }}"
+flock -x 9
+
+( cd home && ./backup.sh )
+( cd cron && ./backup.sh )
+{% if legacy_remote_rsync_push_enabled | bool %}
+( cd remote && ./backup.sh )
+{% else %}
+# 0034 Step 11.4: legacy mars -> backup rsync push disabled; native Btrfs push owns off-site replication.
+{% endif %}

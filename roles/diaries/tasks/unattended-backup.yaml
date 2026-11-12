@@ -1,0 +1,30 @@
+---
+- name: diaries:unattended-backup | Install complete-backup publisher service and timer
+  become: true
+  ansible.builtin.template:
+    src: "etc/systemd/system/{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - diaries-complete-backup-publish.service
+    - diaries-complete-backup-publish.timer
+  notify: Reload systemd
+  tags:
+    - complete-backup-schedule
+
+- name: diaries:unattended-backup | Flush unit changes before timer state
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - complete-backup-schedule
+
+- name: diaries:unattended-backup | Apply explicit complete-backup schedule state
+  become: true
+  ansible.builtin.systemd:
+    name: diaries-complete-backup-publish.timer
+    enabled: "{{ diaries_complete_backup_schedule_enabled | bool }}"
+    state: "{{ 'started' if (diaries_complete_backup_schedule_enabled | bool) else 'stopped' }}"
+    daemon_reload: true
+  tags:
+    - complete-backup-schedule

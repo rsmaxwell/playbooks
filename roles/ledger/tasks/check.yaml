@@ -1,0 +1,83 @@
+---
+- name: ledger:check | Validate required Ledger deployment variables
+  ansible.builtin.assert:
+    that:
+      - ledger_project_dir is defined
+      - ledger_project_dir | length > 0
+      - ledger_frontend_mode is defined
+      - ledger_frontend_mode in ['standalone', 'shared']
+      - ledger_server_image_name is defined
+      - ledger_server_image_name | length > 0
+      - ledger_client_image_name is defined
+      - ledger_client_image_name | length > 0
+      - ledger_server_image_tag is defined
+      - ledger_server_image_tag | length > 0
+      - ledger_client_image_tag is defined
+      - ledger_client_image_tag | length > 0
+      - ledger_db_name is defined
+      - ledger_db_name | length > 0
+      - ledger_db_username is defined
+      - ledger_db_username | length > 0
+      - ledger_db_password is defined
+      - ledger_db_password | length > 0
+    fail_msg: >-
+      One or more required Ledger deployment variables are missing or invalid.
+      ledger_frontend_mode must be either 'standalone' or 'shared'.
+
+- name: ledger:check | Validate standalone frontend variables
+  ansible.builtin.assert:
+    that:
+      - ledger_nginx_image is defined
+      - ledger_nginx_image | length > 0
+      - ledger_nginx_container_name is defined
+      - ledger_nginx_container_name | length > 0
+      - ledger_http_port is defined
+      - ledger_http_port | int > 0
+      - ledger_http_port | int <= 65535
+      - ledger_server_name is defined
+      - ledger_server_name | length > 0
+      - ledger_cloudflare_tunnel_enabled is defined
+      - ledger_cloudflare_image is defined
+      - ledger_cloudflare_image | length > 0
+      - ledger_cloudflare_container_name is defined
+      - ledger_cloudflare_container_name | length > 0
+      - ledger_internet_exposed is defined
+      - ledger_direct_http_enabled is defined
+    fail_msg: >-
+      One or more Ledger standalone frontend variables are missing or invalid.
+  when: ledger_frontend_mode == 'standalone'
+
+- name: ledger:check | Validate shared frontend variables
+  ansible.builtin.assert:
+    that:
+      - ledger_shared_network_name is defined
+      - ledger_shared_network_name | length > 0
+      - ledger_shared_frontend_project_dir is defined
+      - ledger_shared_frontend_project_dir | length > 0
+      - ledger_shared_frontend_nginx_container_name is defined
+      - ledger_shared_frontend_nginx_container_name | length > 0
+      - ledger_shared_frontend_systemd_unit is defined
+      - ledger_shared_frontend_systemd_unit | length > 0
+      - ledger_shared_frontend_file_dir is defined
+      - ledger_shared_frontend_file_dir | length > 0
+      - ledger_shared_frontend_location_dir is defined
+      - ledger_shared_frontend_location_dir | length > 0
+      - ledger_shared_frontend_api_log is defined
+      - ledger_shared_frontend_api_log | length > 0
+    fail_msg: >-
+      One or more Ledger shared frontend variables are missing or invalid.
+  when: ledger_frontend_mode == 'shared'
+
+- name: ledger:check | Validate Cloudflare Tunnel token
+  ansible.builtin.assert:
+    that:
+      - ledger_cloudflare_tunnel_token is defined
+      - ledger_cloudflare_tunnel_token | length > 0
+    fail_msg: >-
+      ledger_cloudflare_tunnel_enabled is true but no Cloudflare Tunnel token
+      has been supplied. Define vault_ledger_cloudflare_tunnel_token in the
+      target host or group Vault variables.
+  when:
+    - ledger_frontend_mode == 'standalone'
+    - ledger_cloudflare_tunnel_enabled | bool
+  no_log: true

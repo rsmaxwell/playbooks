@@ -1,0 +1,27 @@
+---
+- hosts: bootstrap
+  gather_facts: false
+  become: true
+
+  roles:
+    - admin-user
+    - ssh-access
+
+  tasks:
+    - name: Verify administrative access before SSH reconfiguration
+      ansible.builtin.include_role:
+        name: check-ssh-access
+      vars:
+        check_ssh_host: "{{ ansible_host }}"
+        check_ssh_port: "{{ ansible_port }}"
+
+    - name: Configure SSH server
+      ansible.builtin.include_role:
+        name: ssh-server
+
+    - name: Verify administrative access after SSH reconfiguration
+      ansible.builtin.include_role:
+        name: check-ssh-access
+      vars:
+        check_ssh_host: "{{ ansible_host }}"
+        check_ssh_port: "{{ configured_port }}"

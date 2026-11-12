@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule complete Diaries production backup publication
+
+[Timer]
+OnCalendar={{ diaries_complete_backup_on_calendar }}
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

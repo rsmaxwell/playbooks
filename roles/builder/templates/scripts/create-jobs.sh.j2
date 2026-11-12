@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+
+cd ~/projects/builder
+host="{{ jenkins_ssh_host }}"
+
+
+
+cat groovy/enable-builtin-executors.groovy | ssh "${host}" groovy =
+
+# Find all groovy job definitions safely (handles spaces)
+exec 3< <(find jobs -name '*.groovy' -print0)
+while IFS= read -r -d '' -u 3 groovy_file; do
+  parent_dir="$(dirname "$groovy_file")"
+  name="$(basename "$parent_dir")"
+
+  # Create + run seed
+  ssh "${host}" delete-job SEED </dev/null || true
+  job-to-xml < "$groovy_file" | ssh "${host}" create-job SEED
+  ssh "${host}" build SEED -s -v </dev/null
+  ssh "${host}" delete-job SEED </dev/null || true
+
+  # Wait until the real job is not indexing / not building / not queued
+  # (This prevents helper scripts from running too early.)
+  "${SCRIPT_DIR}/wait-for-job-quiet.sh" -H "$host" -j "$name" -t 1200 -i 5 || true
+
+  # Run any *.sh scripts in the same directory as the groovy file
+  shopt -s nullglob
+  scripts=( "$parent_dir"/*.sh )
+  shopt -u nullglob
+{% raw %}
+  if (( ${#scripts[@]} > 0 )); then
+
+    # Run scripts in predictable order
+    IFS=$'\n' scripts_sorted=( $(printf '%s\n' "${scripts[@]}" | sort) )
+    unset IFS
+
+    for script in "${scripts_sorted[@]}"; do
+      echo "Running job helper: $script (job dir: $parent_dir)" >&2
+
+      # Run in a clean bash process, with the job name available if you want it
+      (
+        cd "$parent_dir"
+        export JOB_DIR="$parent_dir"
+        export JOB_NAME="$name"
+
+        if bash "$(basename "$script")"; then
+          :
+        else
+          rc=$?
+          echo "WARNING: job helper failed (rc=$rc): $script (job=$name). Continuing..." >&2
+        fi
+      )
+    done
+  fi
+{% endraw %}
+done
+exec 3<&-
+
+cat groovy/disable-builtin-executors.groovy | ssh "${host}" groovy =

@@ -1,0 +1,6 @@
+
+projects_dir: "{{ ansible_facts['env']['HOME'] }}/projects"
+
+mosquitto_project_dir:      "{{ projects_dir }}/mosquitto"
+infrastructure_project_dir: "{{ projects_dir }}/infrastructure"
+

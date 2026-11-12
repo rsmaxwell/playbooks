@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Follow Diaries production logs.
+#
+# Usage:
+#   logs.sh                 Follow all Compose services.
+#   logs.sh <service>       Follow one Compose service.
+#   logs.sh nginx-errors    Follow the active frontend Nginx error log.
+
+PROJECT_DIR="{{ diaries_project_dir }}"
+COMPOSE_FILE="${PROJECT_DIR}/compose.yaml"
+ENV_FILE="${PROJECT_DIR}/.env"
+FRONTEND_MODE="{{ diaries_frontend_mode }}"
+
+show_usage() {
+    cat >&2 <<USAGE
+Usage: $(basename -- "$0") [nginx-errors|service]
+
+With no argument, follows logs from all Diaries Compose services.
+A Compose service name may be supplied, for example:
+  $(basename -- "$0") diaries-responder
+  $(basename -- "$0") diaries-mqtt
+
+Special view:
+  nginx-errors  Follow the active frontend Nginx error log
+
+Available services:
+USAGE
+    docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" config --services >&2
+}
+
+if [[ ! -f "${COMPOSE_FILE}" || ! -f "${ENV_FILE}" ]]; then
+    echo "ERROR: Diaries runtime files are incomplete under ${PROJECT_DIR}." >&2
+    exit 1
+fi
+
+cd "${PROJECT_DIR}"
+docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" config --quiet
+
+if [[ $# -gt 1 ]]; then
+    show_usage
+    exit 1
+fi
+
+if [[ $# -eq 0 ]]; then
+    docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" logs --follow --tail 200
+    exit 0
+fi
+
+VIEW="$1"
+case "${VIEW}" in
+    nginx-errors)
+        if [[ "${FRONTEND_MODE}" == "shared" ]]; then
+            ERROR_LOG="{{ diaries_shared_frontend_error_log }}"
+        else
+            ERROR_LOG="${PROJECT_DIR}/config/nginx/log/error.log"
+        fi
+        echo "Following Diaries Nginx errors: ${ERROR_LOG}"
+        echo "Press Ctrl-C to stop."
+        tail --lines=200 --follow=name --retry "${ERROR_LOG}"
+        ;;
+    -h|--help|help)
+        show_usage
+        ;;
+    *)
+        if ! docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" config --services | grep -Fxq "${VIEW}"; then
+            echo "ERROR: Unknown Diaries log view or service: ${VIEW}" >&2
+            show_usage
+            exit 1
+        fi
+        docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" logs --follow --tail 200 "${VIEW}"
+        ;;
+esac

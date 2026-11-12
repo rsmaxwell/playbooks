@@ -1,0 +1,34 @@
+{
+  "http": {
+    "host": "0.0.0.0",
+    "port": 8082,
+    "basePath": "/diaries-web",
+    "publicBaseUrl": "https://{{ diaries_hostname }}/diaries-web"
+  },
+  "mqtt": {
+    "host": "diaries-mqtt",
+    "port": 1883,
+    "clientId": "diaries-web",
+    "topicPrefix": "diaries",
+    "keepAliveSeconds": 30,
+    "connectTimeoutSeconds": 10,
+    "reconnectDelaySeconds": 2,
+    "cleanStart": true
+  },
+  "projection": {
+    "initialReplayQuietPeriodMillis": 1500,
+    "initialReplayTimeoutSeconds": 30
+  },
+  "content": {
+    "responderBaseUrl": "http://diaries-responder:8081",
+    "publicResponderBaseUrl": "https://{{ diaries_hostname }}/diaries-responder",
+    "diariesPath": "diaries",
+    "filesPath": "{{ diaries_web_files_path }}"
+  },
+  "site": {
+    "title": "Diaries",
+    "description": "A read-only diary archive",
+    "defaultLocale": "en-GB",
+    "zoneId": "Europe/London"
+  }
+}

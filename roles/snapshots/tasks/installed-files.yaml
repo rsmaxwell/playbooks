@@ -1,0 +1,56 @@
+---
+# 0045-FEAT phase: Install managed static executables and schema verifier.
+- name: snapshots | Install snapshot manager
+  ansible.builtin.copy:
+    src: btrfs-snapshot-manager.py
+    dest: "{{ btrfs_snapshot_manager_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Install Diaries backup-history tool
+  ansible.builtin.copy:
+    src: diaries-backup-history.py
+    dest: "{{ btrfs_snapshot_history_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Install Btrfs extent-sharing acceptance tool
+  ansible.builtin.copy:
+    src: btrfs-extent-sharing.py
+    dest: "{{ btrfs_snapshot_extent_tool_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Create shared schema-2 verifier directory
+  ansible.builtin.file:
+    path: "{{ btrfs_snapshot_manifest_tool_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Install independent schema-2 verifier for history checks
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/roles/diaries/files/sync/scripts/complete-dataset-manifest.py"
+    dest: "{{ btrfs_snapshot_manifest_tool_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags:
+    - snapshots

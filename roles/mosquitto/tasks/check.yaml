@@ -1,0 +1,48 @@
+---
+
+- name: mosquitto | Preflight checks
+  block:
+
+    - name: mosquitto | Check docker CLI exists
+      ansible.builtin.command: docker --version
+      register: docker_version
+      changed_when: false
+      failed_when: false
+
+    - name: mosquitto | Check docker daemon is reachable
+      ansible.builtin.command: docker info
+      register: docker_info
+      changed_when: false
+      failed_when: false
+
+    - name: mosquitto | Check docker compose is available
+      ansible.builtin.command: docker compose version
+      register: docker_compose_version
+      changed_when: false
+      failed_when: false
+
+    - name: mosquitto | Check infrastructure shared network exists
+      ansible.builtin.command: docker network inspect {{ shared_network_name }}
+      register: shared_network
+      changed_when: false
+      failed_when: false
+
+    - name: mosquitto | Check infrastructure nginx container is running
+      ansible.builtin.command:
+        cmd: docker ps --filter name=^/infra-nginx$ --format {{'{{'}}.Names{{'}}'}}
+      register: infra_nginx
+      changed_when: false
+      failed_when: false
+
+    - name: mosquitto | Assert infrastructure prerequisites
+      ansible.builtin.assert:
+        that:
+          - docker_version.rc == 0
+          - docker_info.rc == 0
+          - docker_compose_version.rc == 0
+          - shared_network.rc == 0
+          - infra_nginx.stdout == "infra-nginx"
+        fail_msg: >-
+          Mosquitto requires the infrastructure stack first.
+          Check Docker, Docker Compose, the external network '{{ shared_network_name }}',
+          and that the nginx container 'infra-nginx' is running.

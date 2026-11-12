@@ -1,0 +1,129 @@
+---
+
+projects_dir: "{{ ansible_facts['env']['HOME'] }}/projects"
+diaries_project_dir: "{{ projects_dir }}/diaries"
+
+# Mutable Files storage selector.
+#
+# diaries_files_dir intentionally has no role default. It identifies the
+# mutable Files root paired with the deployed database dataset and must be
+# supplied explicitly by inventory (for production today: files).
+
+# Production complete-dataset storage contract (0034 Step 2).
+#
+# These defaults preserve the completed 0033 on-host layout, but the paths are
+# now explicit Playbooks inputs and may be overridden by inventory when the
+# production backup repository is moved to separately provisioned storage.
+# Restore state remains deliberately distinct from the backup repository.
+diaries_complete_backup_repository_root: "{{ diaries_project_dir }}/data/dataset-backups/production"
+diaries_complete_restore_state_root: "{{ diaries_project_dir }}/data/dataset-restores/production"
+
+# Stable current-publication path (0034 Step 8). This is intentionally separate
+# from the legacy timestamp-ID repository above: historical <backup-id>/ media
+# remain there, while this path is the atomic public pointer consumed by rsync
+# and by the `diaries-backup` restore selector.
+diaries_complete_backup_published_root: "{{ diaries_project_dir }}/data/diaries-backup"
+
+
+# 0034 Step 11.4 unattended production backup publication. Source deployment
+# installs the service/timer but leaves scheduling disabled until explicitly
+# accepted in production inventory.
+diaries_complete_backup_schedule_enabled: false
+# 0036 opt-in changes the existing publish service to a fixed capture.
+diaries_0036_fixed_capture_enabled: false
+diaries_complete_backup_on_calendar: "*-*-* 00:30:00 UTC"
+diaries_complete_backup_timeout_start_sec: 2h
+
+# Storage-mode contract retained from 0034 Step 2 for historical complete-backup
+# capture compatibility. Step 3's direct Btrfs/reflink-on-pluto strategy is
+# superseded; fixed-path publication is filesystem-independent and production
+# remains full-copy on ext4 unless a separately documented migration changes it.
+# Supported legacy values: auto, required-btrfs, full-copy.
+diaries_complete_backup_storage_mode: auto
+
+# Production frontend topology.
+#
+# standalone:
+#   The Diaries Compose stack owns its Nginx service and host ports.
+#
+# shared:
+#   Diaries does not create an Nginx service. Browser-facing Diaries services
+#   join an existing external Docker network and an existing infrastructure
+#   Nginx container routes requests to them.
+diaries_frontend_mode: standalone
+
+# Shared-frontend integration defaults. These are used only when
+# diaries_frontend_mode == 'shared'.
+diaries_shared_network_name: "{{ shared_network_name | default('infrastructure_shared') }}"
+diaries_shared_frontend_project_dir: "{{ projects_dir }}/infrastructure"
+diaries_shared_frontend_nginx_container_name: infra-nginx
+diaries_shared_frontend_systemd_unit: infrastructure-compose.service
+
+# The shared Nginx route is installed as an inactive source file under
+# config/files. start.sh activates it by creating a symlink in
+# config/conf.d/locations; stop.sh removes that symlink before stopping the
+# Diaries containers. This keeps the infrastructure Nginx configuration valid
+# while the Diaries stack is stopped.
+diaries_shared_frontend_file_dir: "{{ diaries_shared_frontend_project_dir }}/nginx/config/files"
+diaries_shared_frontend_file: "{{ diaries_shared_frontend_file_dir }}/diaries.conf"
+diaries_shared_frontend_location_dir: "{{ diaries_shared_frontend_project_dir }}/nginx/config/conf.d/locations"
+diaries_shared_frontend_location_file: "{{ diaries_shared_frontend_location_dir }}/diaries.conf"
+
+# Relative target used for the active symlink. It resolves correctly both on
+# the host and inside infra-nginx because both directories are bind-mounted
+# with the same relative layout beneath /etc/nginx.
+diaries_shared_frontend_location_symlink_target: "../../files/diaries.conf"
+
+# Shared Nginx logs live in the infrastructure project.
+diaries_shared_frontend_log_dir: "{{ diaries_shared_frontend_project_dir }}/nginx/log"
+diaries_shared_frontend_error_log: "{{ diaries_shared_frontend_log_dir }}/error.log"
+
+# Retain compatibility with the existing generic tunnel variable, while giving
+# the Diaries role its own explicit setting. The application-specific tunnel
+# is only created in standalone frontend mode.
+diaries_cloudflare_tunnel_enabled: "{{ enable_cloudflare_tunnel | default(false) }}"
+
+diaries_responder_container_name: diaries-responder
+diaries_client_container_name: diaries-client
+diaries_web_container_name: diaries-web
+
+# Browser-visible responder Files route used by diaries-web for catalogue Images.
+# This is emitted into content.filesPath in the generated production web config.
+diaries_web_files_path: "files"
+
+# IMAGE Fragment authoring is normal production behaviour after 0027 close-out.
+# The reader, responder and client rollout prerequisites have passed and the
+# enabled lifecycle has been verified on production. Set this to false for the
+# supported non-destructive authoring stop/rollback.
+diaries_image_fragment_writes_enabled: true
+
+diaries_client_image_name: rsmaxwell/diaries-client
+diaries_client_image_tag: "0.0.9-build-76"
+
+diaries_responder_image_name: rsmaxwell/diaries-responder
+diaries_responder_image_tag: "0.0.9-build-84"
+
+diaries_web_image_name: rsmaxwell/diaries-web
+diaries_web_image_tag: "0.0.9-build-8"
+
+diaries_hostname: "pluto.rsmaxwell.co.uk"
+
+# 0036 Gate 3: separate host NAS mount, strictly opt-in.
+diaries_0036_host_nas_mount_enabled: false
+diaries_0036_host_nas_mount_root: /mnt/nas-diaries
+diaries_0036_host_nas_host: ''
+diaries_0036_host_nas_share: ''
+diaries_0036_host_nas_content_path: ''
+diaries_0036_host_nas_username: ''
+diaries_0036_host_nas_password: ''
+
+# Gate E compatibility aliases: stable names take precedence. Existing 0036
+# inventory variables remain supported; do not remove until host vars migrate.
+diaries_fixed_capture_enabled: "{{ diaries_0036_fixed_capture_enabled }}"
+diaries_host_nas_mount_enabled: "{{ diaries_0036_host_nas_mount_enabled }}"
+diaries_host_nas_mount_root: "{{ diaries_0036_host_nas_mount_root }}"
+diaries_host_nas_host: "{{ diaries_0036_host_nas_host }}"
+diaries_host_nas_share: "{{ diaries_0036_host_nas_share }}"
+diaries_host_nas_content_path: "{{ diaries_0036_host_nas_content_path }}"
+diaries_host_nas_username: "{{ diaries_0036_host_nas_username }}"
+diaries_host_nas_password: "{{ diaries_0036_host_nas_password }}"

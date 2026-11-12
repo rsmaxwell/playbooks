@@ -1,0 +1,76 @@
+---
+
+
+- name: infrastructure:firewall | Set the OpenSSH port in the ufw profile
+  ansible.builtin.lineinfile:
+    path: /etc/ufw/applications.d/openssh-server
+    regexp: '^ports='
+    line: ports={{ ansible_port }}/tcp
+  register: result
+
+- debug:
+    var: result
+
+- name: infrastructure:firewall | Copy HTTP and HTTPS profiles for UFW
+  ansible.builtin.template:
+    src: firewall/{{ item }}.j2
+    dest: /etc/ufw/applications.d/{{ item }}
+    mode: '0644'
+  loop:
+    - http
+    - https
+    - git
+
+- name: infrastructure:firewall | Reload UFW application definitions
+  ansible.builtin.command: ufw app update {{ item }}
+  changed_when: false
+  loop:
+    - OpenSSH
+    - HTTP
+    - HTTPS
+    - GIT
+
+
+
+
+- name: infrastructure:firewall | Set the UFW default to deny incoming traffic
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: infrastructure:firewall | Set the UFW default to allow outgoing traffic
+  community.general.ufw:
+    state: enabled
+    default: allow
+    direction: outgoing
+
+
+
+
+
+- name: infrastructure:firewall | define rules to allow selected traffic
+  community.general.ufw:
+    rule: allow
+    name: "{{ item }}"
+  loop:
+    - OpenSSH
+    - HTTP
+    - HTTPS
+    - GIT
+
+
+- debug:
+    var: result
+
+
+
+
+
+
+
+
+- debug:
+    var: result
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled

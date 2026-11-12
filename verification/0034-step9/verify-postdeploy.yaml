@@ -1,0 +1,155 @@
+---
+# Run immediately after the normal diaries Playbooks deployment and before
+# creating any new Step 9 backups. This is non-destructive.
+- name: 0034 Step 9 postdeploy preservation and preflight checks
+  hosts: pluto
+  gather_facts: false
+  vars:
+    step9_project_dir: /home/richard/projects/diaries
+    step9_repository_root: /home/richard/projects/diaries/data/dataset-backups/production
+    step9_published_root: /home/richard/projects/diaries/data/diaries-backup
+    step9_pilot_root: /home/richard/projects/diaries/data/dataset-backups/production/diaries-backup
+    step9_safety_dir: ""
+    step9_allow_new_backups: false
+  tasks:
+    - name: Require an explicit predeploy safety directory
+      ansible.builtin.assert:
+        that:
+          - step9_safety_dir is string
+          - step9_safety_dir | length > 0
+          - step9_safety_dir is match('^/')
+        fail_msg: "Pass the exact step9_safety_dir reported by capture-predeploy.yaml"
+
+    - name: Require explicit boolean post-publication switch
+      ansible.builtin.assert:
+        that:
+          - step9_allow_new_backups is boolean
+
+    - name: Read preserved historical backup ID inventory
+      ansible.builtin.command:
+        argv: [cat, "{{ step9_safety_dir }}/legacy-backup-ids.txt"]
+      register: step9_before_ids
+      changed_when: false
+
+    - name: Read current historical backup ID inventory
+      ansible.builtin.shell: |
+        set -o pipefail
+        find "{{ step9_repository_root }}" -mindepth 1 -maxdepth 1 -type d \
+          -regextype posix-extended -regex '.*/[0-9]{8}-[0-9]{6}Z' -printf '%f\n' | sort
+      args:
+        executable: /bin/bash
+      register: step9_after_ids
+      changed_when: false
+
+    - name: Prove predeploy backup IDs preserved (exact before publication, subset afterwards)
+      ansible.builtin.assert:
+        that:
+          - >-
+            (step9_allow_new_backups and
+             ((step9_before_ids.stdout_lines | difference(step9_after_ids.stdout_lines)) | length == 0))
+            or
+            ((not step9_allow_new_backups) and
+             step9_after_ids.stdout == step9_before_ids.stdout)
+        fail_msg: >-
+          Historical timestamp-ID inventory does not meet the selected verification
+          stage. Before publication, inventories must match exactly. Afterwards,
+          every predeployment backup must remain; inspect the repository.
+
+    - name: Verify deployed final stable publication root
+      ansible.builtin.command:
+        argv:
+          - grep
+          - --fixed-strings
+          - --line-regexp
+          - "DIARIES_COMPLETE_BACKUP_PUBLISHED_ROOT={{ step9_published_root }}"
+          - "{{ step9_project_dir }}/.env"
+      changed_when: false
+
+    - name: Run integrated publication/capture preflight
+      ansible.builtin.command:
+        argv:
+          - "{{ step9_project_dir }}/scripts/backup-dataset.sh"
+          - publish-preflight
+      register: step9_publish_preflight
+      changed_when: false
+
+    - name: Verify one preserved historical backup through restore preflight
+      ansible.builtin.shell: |
+        set -euo pipefail
+        id="$(tail -n 1 "{{ step9_safety_dir }}/legacy-backup-ids.txt")"
+        test -n "$id"
+        exec "{{ step9_project_dir }}/scripts/restore-dataset.sh" preflight "$id"
+      args:
+        executable: /bin/bash
+      register: step9_legacy_restore_preflight
+      changed_when: false
+
+    - name: Inspect transitional Step 6 pilot path
+      ansible.builtin.stat:
+        path: "{{ step9_pilot_root }}"
+        follow: false
+      register: step9_pilot_stat
+
+    - name: Verify transitional Step 6 pilot remains explicitly restorable when present
+      ansible.builtin.command:
+        argv:
+          - "{{ step9_project_dir }}/scripts/restore-dataset.sh"
+          - preflight
+          - "{{ step9_pilot_root }}"
+      register: step9_pilot_restore_preflight
+      changed_when: false
+      when: (step9_pilot_stat.stat.exists | default(false)) or (step9_pilot_stat.stat.islnk | default(false))
+
+    - name: Verify private predeploy .env safety copy exists
+      ansible.builtin.stat:
+        path: "{{ step9_safety_dir }}/.env"
+        checksum_algorithm: sha256
+      register: step9_saved_env
+
+    - name: Read recorded predeploy .env checksum
+      ansible.builtin.command:
+        argv: [cat, "{{ step9_safety_dir }}/env-sha256.txt"]
+      register: step9_saved_env_checksum
+      changed_when: false
+
+    - name: Prove the saved predeploy .env is intact
+      ansible.builtin.assert:
+        that:
+          - step9_saved_env.stat.exists
+          - step9_saved_env.stat.isreg
+          - step9_saved_env.stat.checksum == (step9_saved_env_checksum.stdout | trim)
+
+    - name: Demonstrate non-destructive .env rollback copy
+      ansible.builtin.copy:
+        src: "{{ step9_safety_dir }}/.env"
+        dest: "{{ step9_safety_dir }}/.env.rollback-demo"
+        remote_src: true
+        owner: richard
+        group: richard
+        mode: '0600'
+      no_log: true
+
+    - name: Check rollback-demo checksum
+      ansible.builtin.stat:
+        path: "{{ step9_safety_dir }}/.env.rollback-demo"
+        checksum_algorithm: sha256
+      register: step9_rollback_demo
+
+    - name: Prove rollback copy matches predeploy .env
+      ansible.builtin.assert:
+        that:
+          - step9_rollback_demo.stat.checksum == step9_saved_env.stat.checksum
+
+    - name: Remove rollback-demo copy only
+      ansible.builtin.file:
+        path: "{{ step9_safety_dir }}/.env.rollback-demo"
+        state: absent
+
+    - name: Report postdeploy acceptance
+      ansible.builtin.debug:
+        msg:
+          - "Legacy timestamp-ID inventory unchanged across deployment."
+          - "Final published root is configured as {{ step9_published_root }}."
+          - "publish-preflight passed without capture/publication."
+          - "A preserved historical backup passed restore preflight."
+          - "Predeploy .env safety copy is checksum-valid and rollback copy was demonstrated without replacing live .env."

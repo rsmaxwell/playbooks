@@ -1,0 +1,30 @@
+<settings>
+
+    <servers>
+        <server>
+            <id>integration</id>
+            <username>richard</username>
+            <password>{{ mavenPassword }}</password>
+            <filePermissions>664</filePermissions>
+            <directoryPermissions>775</directoryPermissions>
+            <configuration></configuration>
+        </server>
+
+        <server>
+            <id>releases</id>
+            <username>richard</username>
+            <password>{{ mavenPassword }}</password>
+            <filePermissions>664</filePermissions>
+            <directoryPermissions>775</directoryPermissions>
+            <configuration></configuration>
+        </server>
+
+        <server>
+            <id>snapshots</id>
+            <username>{{ mavenUser }}</username>
+            <password>{{ mavenPassword }}</password>
+        </server>
+    </servers>
+
+</settings>
+

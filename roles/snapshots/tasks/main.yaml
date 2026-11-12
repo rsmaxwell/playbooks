@@ -1,0 +1,27 @@
+---
+# 0045-FEAT: static imports preserve original task order and per-task tags.
+# Do not attach tags or conditions at import level; child tasks retain their own.
+
+- name: snapshots | Validate source endpoint, activation gates and configured sources
+  ansible.builtin.import_tasks: validate.yaml
+
+- name: snapshots | Install prerequisites and ensure managed data subvolume
+  ansible.builtin.import_tasks: prerequisites.yaml
+
+- name: snapshots | Inspect, protect and provision timestamp snapshot roots
+  ansible.builtin.import_tasks: snapshot-roots.yaml
+
+- name: snapshots | Install managed static executables and schema verifier
+  ansible.builtin.import_tasks: installed-files.yaml
+
+- name: snapshots | Preserve checkpoint holds and render manager configuration
+  ansible.builtin.import_tasks: state-and-config.yaml
+
+- name: snapshots | Render systemd units and reload before preflight
+  ansible.builtin.import_tasks: systemd-units.yaml
+
+- name: snapshots | Check manager readiness before activation
+  ansible.builtin.import_tasks: preflight.yaml
+
+- name: snapshots | Apply explicitly approved timer activation states
+  ansible.builtin.import_tasks: activation.yaml

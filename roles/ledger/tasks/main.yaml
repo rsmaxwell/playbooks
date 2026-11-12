@@ -1,0 +1,39 @@
+---
+
+- name: ledger | validate configuration
+  ansible.builtin.import_tasks: check.yaml
+  tags:
+    - check
+
+- name: ledger | configure firewall
+  ansible.builtin.import_tasks: firewall.yaml
+  become: true
+  when:
+    - ledger_frontend_mode == 'standalone'
+    - ledger_internet_exposed | bool
+  tags:
+    - firewall
+
+- name: ledger | utilities
+  ansible.builtin.import_tasks: utilities.yaml
+  tags:
+    - utils
+
+- name: ledger | copy files
+  ansible.builtin.import_tasks: copy.yaml
+  tags:
+    - copy
+
+- name: ledger | configure shared frontend
+  ansible.builtin.import_tasks: shared-frontend.yaml
+  when: ledger_frontend_mode == 'shared'
+  tags:
+    - copy
+    - frontend
+
+- name: ledger | remove stale shared frontend configuration
+  ansible.builtin.import_tasks: standalone-frontend.yaml
+  when: ledger_frontend_mode == 'standalone'
+  tags:
+    - copy
+    - frontend

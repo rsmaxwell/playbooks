@@ -1,0 +1,192 @@
+---
+# 0034 Step 8 installed configuration/scripts only. Step 11.4 adds an explicit default-off systemd schedule; deployment never executes a pull directly.
+- name: diaries pull | Validate opt-in configuration
+  ansible.builtin.assert:
+    that:
+      - diaries_pull_install is boolean
+      - diaries_pull_fixed_destination_enabled is boolean
+      - diaries_pull_fixed_source_guard is string
+      - not (diaries_pull_fixed_destination_enabled | bool) or (diaries_pull_fixed_source_guard is match('^/'))
+      - not (diaries_pull_fixed_destination_enabled | bool) or (diaries_pull_install | bool)
+      - diaries_pull_host is string
+      - (diaries_pull_host | length) > 0
+      - diaries_pull_source_parent is string
+      - diaries_pull_source_parent is match('^/')
+      - diaries_pull_destination_parent is string
+      - diaries_pull_destination_parent is match('^/')
+      - diaries_pull_snapshot_source_root is string
+      - diaries_pull_snapshot_source_root is match('^/')
+      - diaries_pull_verification_marker is string
+      - diaries_pull_verification_marker is match('^/')
+      - diaries_pull_repository_lock is string
+      - diaries_pull_repository_lock is match('^/')
+      - diaries_snapshot_integration_enabled is boolean
+      - diaries_pull_schedule_enabled is boolean
+      - diaries_pull_on_calendar is string
+      - (diaries_pull_on_calendar | length) > 0
+      - diaries_pull_timeout_start_sec is string
+      - (diaries_pull_timeout_start_sec | length) > 0
+      - not (diaries_pull_schedule_enabled | bool) or (diaries_pull_install | bool)
+      - not (diaries_pull_schedule_enabled | bool) or (diaries_snapshot_integration_enabled | bool)
+      - diaries_pull_script_dir is string
+      - diaries_pull_script_dir is match('^/')
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Create normal-user-owned script and receiving directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+  loop:
+    - "{{ diaries_pull_script_dir }}"
+    - "{{ diaries_pull_destination_parent }}"
+  become: true
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Inspect shared whole-backup writer lock
+  ansible.builtin.stat:
+    path: "{{ diaries_pull_repository_lock }}"
+  register: diaries_pull_repository_lock_stat
+  when: diaries_pull_install | bool or diaries_snapshot_integration_enabled | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Create shared whole-backup writer lock once
+  ansible.builtin.file:
+    path: "{{ diaries_pull_repository_lock }}"
+    state: touch
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0664"
+    access_time: preserve
+    modification_time: preserve
+  become: true
+  when:
+    - diaries_pull_install | bool or diaries_snapshot_integration_enabled | bool
+    - not diaries_pull_repository_lock_stat.stat.exists
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Preserve writer-lock ownership/mode for normal-user backup jobs
+  ansible.builtin.file:
+    path: "{{ diaries_pull_repository_lock }}"
+    state: file
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0664"
+  become: true
+  when: diaries_pull_install | bool or diaries_snapshot_integration_enabled | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Install opt-in pull helper as the normal SSH user
+  ansible.builtin.copy:
+    src: backup-machine/diaries-pull.py
+    dest: "{{ diaries_pull_script_dir }}/diaries-pull.py"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  become: true
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Install receiving publisher as the normal SSH user
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../diaries/files/sync/scripts/complete-dataset-publisher.py"
+    dest: "{{ diaries_pull_script_dir }}/complete-dataset-publisher.py"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  become: true
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Install schema-2 manifest verifier as the normal SSH user
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../diaries/files/sync/scripts/complete-dataset-manifest.py"
+    dest: "{{ diaries_pull_script_dir }}/complete-dataset-manifest.py"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  become: true
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Template configured operator wrapper
+  ansible.builtin.template:
+    src: diaries/diaries-pull.sh.j2
+    dest: "{{ diaries_pull_script_dir }}/diaries-pull.sh"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+  become: true
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+
+- name: diaries pull | Inspect previously installed unattended receive timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/diaries-pull.timer
+  register: diaries_pull_timer_unit
+  become: true
+  tags:
+    - diaries-pull
+    - scheduling
+
+- name: diaries pull | Disable stale unattended receive timer when helper is not installed
+  ansible.builtin.systemd:
+    name: diaries-pull.timer
+    enabled: false
+    state: stopped
+    daemon_reload: true
+  become: true
+  when:
+    - not (diaries_pull_install | bool)
+    - diaries_pull_timer_unit.stat.exists
+  tags:
+    - diaries-pull
+    - scheduling
+
+- name: diaries pull | Install unattended receive service and timer
+  ansible.builtin.template:
+    src: "diaries/{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - diaries-pull.service
+    - diaries-pull.timer
+  become: true
+  when: diaries_pull_install | bool
+  notify: Restart systemd
+  tags:
+    - diaries-pull
+    - scheduling
+
+- name: diaries pull | Flush systemd unit changes before timer state
+  ansible.builtin.meta: flush_handlers
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+    - scheduling
+
+- name: diaries pull | Apply explicit unattended receive schedule state
+  ansible.builtin.systemd:
+    name: diaries-pull.timer
+    enabled: "{{ diaries_pull_schedule_enabled | bool }}"
+    state: "{{ 'started' if (diaries_pull_schedule_enabled | bool) else 'stopped' }}"
+    daemon_reload: true
+  become: true
+  when: diaries_pull_install | bool
+  tags:
+    - diaries-pull
+    - scheduling

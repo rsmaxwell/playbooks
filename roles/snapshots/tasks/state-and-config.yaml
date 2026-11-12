@@ -1,0 +1,25 @@
+---
+# 0045-FEAT phase: Preserve checkpoint holds and render manager configuration.
+- name: snapshots | Initialise checkpoint hold state without overwriting existing holds
+  ansible.builtin.copy:
+    content: "{{ {'schema': 1, 'holds': {}} | to_nice_json }}\n"
+    dest: "{{ btrfs_snapshot_root_effective }}/.checkpoint-holds.json"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+  become: true
+  when: inventory_hostname == "mars"
+  tags:
+    - snapshots
+
+- name: snapshots | Install snapshot manager configuration
+  ansible.builtin.template:
+    src: btrfs-snapshot-manager.json.j2
+    dest: "{{ btrfs_snapshot_manager_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  tags:
+    - snapshots

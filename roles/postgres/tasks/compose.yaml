@@ -1,0 +1,9 @@
+---
+
+- name: postgres:compose | Ensure shared Docker network exists
+  community.docker.docker_network:
+    name: "{{ shared_network_name }}"
+    driver: bridge
+    state: present
+
+

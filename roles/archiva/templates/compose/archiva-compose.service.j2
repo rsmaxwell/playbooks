@@ -1,0 +1,16 @@
+[Unit]
+Description=Archiva webapp
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=richard
+Group=docker
+WorkingDirectory={{ archiva_scripts_dir }}
+ExecStart={{ archiva_scripts_dir }}/start.sh
+ExecStop=-{{ archiva_scripts_dir }}/stop.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

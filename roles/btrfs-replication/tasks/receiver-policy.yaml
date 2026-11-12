@@ -1,0 +1,28 @@
+---
+# 0045-FEAT phase: Configure receiver retention policy and retired observer security.
+- name: Native Btrfs | Install public receiver retention policy (opt in)
+  ansible.builtin.template:
+    src: btrfs-receiver-retention.json.j2
+    dest: /etc/btrfs-receiver-retention.json
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+  tags: [native-btrfs, receiver-manager]
+
+# 0042: dormant staged agreed-parent prototype installers, sudoers and
+# sender-proof deployment have been retired after 0040 acceptance.
+# The simplified implementation uses no prototype helpers.
+- name: Native Btrfs | Keep retired observer sudoers absent
+  ansible.builtin.file:
+    path: /etc/sudoers.d/diaries-agreed-parent-observer
+    state: absent
+  become: true
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [native-btrfs, agreed-parent-observer]
+
+# 0040 simplified replacement: opt-in binary installation only.
+# Both hosts receive exactly the same fixed-role script. No service/timer changes.

@@ -1,0 +1,126 @@
+services:
+
+{% if ledger_frontend_mode == 'standalone' and ledger_cloudflare_tunnel_enabled | bool %}
+  cloudflared:
+    container_name: "{{ ledger_cloudflare_container_name }}"
+    image: "{{ ledger_cloudflare_image }}"
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - "${CLOUDFLARE_TUNNEL_TOKEN}"
+    depends_on:
+      ledger-nginx:
+        condition: service_healthy
+{% endif %}
+
+  ledger-db:
+    image: postgres:18-alpine
+    container_name: {{ ledger_container_prefix }}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LEDGER_DB_NAME}
+      POSTGRES_USER: ${LEDGER_DB_USERNAME}
+      POSTGRES_PASSWORD: ${LEDGER_DB_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+      - ./backups:/backups
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+{% if ledger_frontend_mode == 'standalone' %}
+  ledger-nginx:
+    image: "{{ ledger_nginx_image }}"
+    container_name: "{{ ledger_nginx_container_name }}"
+    restart: unless-stopped
+    depends_on:
+      ledger-client:
+        condition: service_healthy
+      ledger-server:
+        condition: service_healthy
+{% if (not (ledger_internet_exposed | bool)) or (ledger_direct_http_enabled | bool) %}
+    ports:
+      - "{{ ledger_http_port }}:80"
+{% endif %}
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./config/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./logs/nginx:/var/log/nginx
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --spider http://127.0.0.1/ledger-health || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+{% endif %}
+
+  ledger-server:
+    image: "{{ ledger_server_image_name }}:{{ ledger_server_image_tag }}"
+    container_name: {{ ledger_container_prefix }}-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      LEDGER_DB_URL: jdbc:postgresql://ledger-db:5432/${LEDGER_DB_NAME}
+      SERVER_PORT: 8080
+    depends_on:
+      ledger-db:
+        condition: service_healthy
+{% if ledger_frontend_mode == 'shared' %}
+    networks:
+      - default
+      - shared
+{% endif %}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q '\"status\":\"UP\"'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  ledger-client:
+    image: "{{ ledger_client_image_name }}:{{ ledger_client_image_tag }}"
+    container_name: {{ ledger_container_prefix }}-client
+    restart: unless-stopped
+{% if ledger_frontend_mode == 'shared' %}
+    networks:
+      - default
+      - shared
+{% endif %}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1/client-health | grep -q 'ledger-client ok'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+{% if ledger_frontend_mode == 'shared' %}
+networks:
+  default:
+  shared:
+    external: true
+    name: "{{ ledger_shared_network_name }}"
+{% endif %}

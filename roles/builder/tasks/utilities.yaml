@@ -1,0 +1,13 @@
+---
+
+- name: builder:utilities | Install utility packages
+  ansible.builtin.apt:
+    name:
+      - jq
+      - tree
+      - zip
+      - unzip
+      - golang-go
+    state: present
+    update_cache: true
+  become: true

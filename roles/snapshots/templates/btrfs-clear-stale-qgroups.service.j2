@@ -1,0 +1,16 @@
+[Unit]
+Description=0039 Btrfs stale qgroup reconciliation ({{ btrfs_native_endpoint_role }})
+After=local-fs.target
+ConditionPathIsMountPoint={{ '/media/usb' if btrfs_native_endpoint_role == 'source' else '/' }}
+AssertPathExists=/etc/btrfs-snapshot-manager.json
+AssertPathExists=/etc/btrfs-stale-qgroups.json
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/btrfs-clear-stale-qgroups --config /etc/btrfs-stale-qgroups.json --execute
+TimeoutStartSec=1h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

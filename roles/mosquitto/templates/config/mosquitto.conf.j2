@@ -1,0 +1,30 @@
+# /mosquitto/config/mosquitto.conf
+
+per_listener_settings true
+
+# Persist retained messages / session state
+persistence true
+persistence_location /mosquitto/data/
+
+# Send logs to file
+log_dest file /mosquitto/log/mosquitto.log
+log_type all
+
+# Internal MQTT listener for backend services only
+listener 1883
+protocol mqtt
+socket_domain ipv4
+allow_anonymous false
+password_file /mosquitto/config/pwfile.txt
+acl_file /mosquitto/config/aclfile.txt
+
+
+# Internal WebSocket listener for nginx proxying
+listener 9001
+protocol websockets
+allow_anonymous false
+password_file /mosquitto/config/pwfile.txt
+acl_file /mosquitto/config/aclfile.txt
+
+max_inflight_messages 20
+max_queued_messages 10000

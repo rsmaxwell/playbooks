@@ -1,0 +1,20 @@
+---
+
+- name: mosquitto | preflight checks
+  ansible.builtin.import_tasks: check.yaml
+  become: yes
+  tags:
+    - check
+
+- name: mosquitto | copy files
+  ansible.builtin.import_tasks: copy.yaml
+  tags:
+    - copy
+
+- name: mosquitto | setup compose
+  ansible.builtin.import_tasks: compose.yaml
+  tags:
+    - compose
+
+
+

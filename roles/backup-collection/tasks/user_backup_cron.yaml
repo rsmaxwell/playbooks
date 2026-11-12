@@ -1,0 +1,12 @@
+---
+- name: Set user home and cron backup schedule
+  ansible.builtin.cron:
+    name: backup
+    user: "{{ ansible_user }}"
+    minute: "{{ local_backup_user_cron_minute }}"
+    hour: "{{ local_backup_user_cron_hour }}"
+    job: >-
+      {{ normal_user_home }}/scripts/backup/backup.sh
+      > {{ normal_user_home }}/log/backup/stdout
+      2> {{ normal_user_home }}/log/backup/stderr
+  become: true

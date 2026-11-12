@@ -1,0 +1,7 @@
+---
+# 0047-FEAT: permanent backup collection entry point on mars.
+
+- hosts: local_backup
+
+  roles:
+    - role: backup-collection

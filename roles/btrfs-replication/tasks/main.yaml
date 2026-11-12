@@ -1,0 +1,13 @@
+---
+# Default role entry point is intentionally the generic snapshots path.
+# The native replication entry point is always btrfs-replication.yaml,
+# which selects tasks_from: native.yaml explicitly. Do not substitute
+# native tasks here: snapshots.yaml relies on this path to refuse a
+# generic snapshot deployment on receiver hosts.
+- name: btrfs-replication | Configure timestamp-named Btrfs snapshot manager
+  ansible.builtin.include_role:
+    name: snapshots
+    apply:
+      become: true
+  tags:
+    - snapshots

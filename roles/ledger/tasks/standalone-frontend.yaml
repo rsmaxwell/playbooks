@@ -1,0 +1,54 @@
+---
+
+- name: ledger:standalone-frontend | Remove stale shared Nginx active location
+  ansible.builtin.file:
+    path: "{{ ledger_shared_frontend_location_file }}"
+    state: absent
+  register: ledger_stale_shared_frontend_location
+
+- name: ledger:standalone-frontend | Remove stale shared Nginx source file
+  ansible.builtin.file:
+    path: "{{ ledger_shared_frontend_file }}"
+    state: absent
+
+- name: ledger:standalone-frontend | Check whether shared Nginx is running
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - -f
+      - "{{ '{{' }}.State.Running{{ '}}' }}"
+      - "{{ ledger_shared_frontend_nginx_container_name }}"
+  changed_when: false
+  failed_when: false
+  register: ledger_shared_nginx_running
+  when: ledger_stale_shared_frontend_location.changed
+
+- name: ledger:standalone-frontend | Validate shared Nginx after removing stale route
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ ledger_shared_frontend_nginx_container_name }}"
+      - nginx
+      - -t
+  changed_when: false
+  when:
+    - ledger_stale_shared_frontend_location.changed
+    - ledger_shared_nginx_running.rc == 0
+    - ledger_shared_nginx_running.stdout == 'true'
+
+- name: ledger:standalone-frontend | Reload shared Nginx after removing stale route
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ ledger_shared_frontend_nginx_container_name }}"
+      - nginx
+      - -s
+      - reload
+  changed_when: true
+  when:
+    - ledger_stale_shared_frontend_location.changed
+    - ledger_shared_nginx_running.rc == 0
+    - ledger_shared_nginx_running.stdout == 'true'

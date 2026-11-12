@@ -1,0 +1,39 @@
+---
+- name: 0035 Step 4 | Install read-only history locator on pluto (no Btrfs role)
+  hosts: pluto
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Install read-only history locator
+      ansible.builtin.copy:
+        src: ../../roles/snapshots/files/diaries-backup-history.py
+        dest: /usr/local/sbin/diaries-backup-history
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install schema-2 verifier directory
+      ansible.builtin.file:
+        path: /usr/local/lib/diaries-backup
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install existing independent schema-2 verifier
+      ansible.builtin.copy:
+        src: ../../roles/diaries/files/sync/scripts/complete-dataset-manifest.py
+        dest: /usr/local/lib/diaries-backup/complete-dataset-manifest.py
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Verify published history can be enumerated
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/diaries-backup-history
+          - --published-root
+          - /home/richard/projects/diaries/data/diaries-backup
+          - list
+      register: history_install_check
+      changed_when: false
+    - name: Show published backup identity
+      ansible.builtin.debug:
+        var: history_install_check.stdout_lines

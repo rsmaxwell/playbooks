@@ -1,0 +1,164 @@
+---
+# 0034 Step 9: inspect first; persist a private on-pluto safety capture only
+# when explicitly requested with -e step9_capture=true.
+- name: 0034 Step 9 predeploy inventory and safety capture
+  hosts: pluto
+  gather_facts: false
+  vars:
+    step9_capture: false
+    step9_project_dir: /home/richard/projects/diaries
+    step9_repository_root: /home/richard/projects/diaries/data/dataset-backups/production
+    step9_published_root: /home/richard/projects/diaries/data/diaries-backup
+    step9_pilot_root: /home/richard/projects/diaries/data/dataset-backups/production/diaries-backup
+    step9_safety_root: /home/richard/projects/diaries/data/0034-step9-safety
+  tasks:
+    - name: Require explicit boolean capture switch
+      ansible.builtin.assert:
+        that:
+          - step9_capture is boolean
+
+    - name: Inspect deployed .env
+      ansible.builtin.stat:
+        path: "{{ step9_project_dir }}/.env"
+        checksum_algorithm: sha256
+      register: step9_env_stat
+
+    - name: Require deployed .env
+      ansible.builtin.assert:
+        that:
+          - step9_env_stat.stat.exists
+          - step9_env_stat.stat.isreg
+        fail_msg: "Expected deployed Diaries .env is missing on pluto"
+
+    - name: Capture non-secret complete-backup .env contract
+      ansible.builtin.shell: |
+        set -o pipefail
+        grep -E '^DIARIES_COMPLETE_(BACKUP_REPOSITORY_ROOT|RESTORE_STATE_ROOT|BACKUP_PUBLISHED_ROOT|BACKUP_STORAGE_MODE)=' "{{ step9_project_dir }}/.env" || true
+      args:
+        executable: /bin/bash
+      register: step9_env_contract
+      changed_when: false
+
+    - name: Capture historical backup ID inventory
+      ansible.builtin.shell: |
+        set -o pipefail
+        if [ ! -d "{{ step9_repository_root }}" ]; then
+          echo "ERROR: legacy repository missing: {{ step9_repository_root }}" >&2
+          exit 2
+        fi
+        find "{{ step9_repository_root }}" -mindepth 1 -maxdepth 1 -type d \
+          -regextype posix-extended -regex '.*/[0-9]{8}-[0-9]{6}Z' -printf '%f\n' | sort
+      args:
+        executable: /bin/bash
+      register: step9_legacy_inventory
+      changed_when: false
+
+    - name: Inspect transitional and final publication paths
+      ansible.builtin.shell: |
+        set -eu
+        for p in "{{ step9_pilot_root }}" "{{ step9_published_root }}"; do
+          if [ -L "$p" ]; then
+            printf '%s\tsymlink\t%s\n' "$p" "$(readlink "$p")"
+          elif [ -d "$p" ]; then
+            printf '%s\tdirectory\n' "$p"
+          elif [ -e "$p" ]; then
+            printf '%s\tother\n' "$p"
+          else
+            printf '%s\tabsent\n' "$p"
+          fi
+        done
+      register: step9_publication_paths
+      changed_when: false
+
+    - name: Run current non-destructive complete-backup preflight
+      ansible.builtin.command:
+        argv:
+          - "{{ step9_project_dir }}/scripts/backup-dataset.sh"
+          - preflight
+      register: step9_preflight
+      changed_when: false
+
+    - name: Capture current deployment state
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo '--- systemd ---'
+        systemctl is-active diaries-compose.service || true
+        echo '--- docker compose ps ---'
+        cd "{{ step9_project_dir }}"
+        docker compose --file compose.yaml --env-file .env ps
+        echo '--- filesystems ---'
+        df -T "{{ step9_repository_root }}" "{{ step9_project_dir }}/data"
+      args:
+        executable: /bin/bash
+      register: step9_deployment_state
+      changed_when: false
+
+    - name: Report read-only predeploy state
+      ansible.builtin.debug:
+        msg:
+          - "env sha256={{ step9_env_stat.stat.checksum }}"
+          - "env contract={{ step9_env_contract.stdout_lines }}"
+          - "legacy backup IDs={{ step9_legacy_inventory.stdout_lines }}"
+          - "publication paths={{ step9_publication_paths.stdout_lines }}"
+          - "preflight passed; capture requested={{ step9_capture }}"
+
+    - name: Generate safety capture ID
+      ansible.builtin.command:
+        argv: [date, -u, +%Y%m%d-%H%M%SZ]
+      register: step9_capture_id
+      changed_when: false
+      when: step9_capture | bool
+
+    - name: Define safety capture directory
+      ansible.builtin.set_fact:
+        step9_safety_dir: "{{ step9_safety_root }}/{{ step9_capture_id.stdout }}"
+      when: step9_capture | bool
+
+    - name: Create private Step 9 safety directory
+      ansible.builtin.file:
+        path: "{{ step9_safety_dir }}"
+        state: directory
+        owner: richard
+        group: richard
+        mode: '0700'
+      when: step9_capture | bool
+
+    - name: Preserve predeploy .env privately on pluto
+      ansible.builtin.copy:
+        src: "{{ step9_project_dir }}/.env"
+        dest: "{{ step9_safety_dir }}/.env"
+        remote_src: true
+        owner: richard
+        group: richard
+        mode: '0600'
+      no_log: true
+      when: step9_capture | bool
+
+    - name: Persist non-secret predeploy evidence on pluto
+      ansible.builtin.copy:
+        dest: "{{ step9_safety_dir }}/{{ item.name }}"
+        content: "{{ item.content }}\n"
+        owner: richard
+        group: richard
+        mode: '0600'
+      loop:
+        - name: env-sha256.txt
+          content: "{{ step9_env_stat.stat.checksum }}"
+        - name: env-contract.txt
+          content: "{{ step9_env_contract.stdout }}"
+        - name: legacy-backup-ids.txt
+          content: "{{ step9_legacy_inventory.stdout }}"
+        - name: publication-paths.txt
+          content: "{{ step9_publication_paths.stdout }}"
+        - name: backup-preflight.txt
+          content: "{{ step9_preflight.stdout }}"
+        - name: deployment-state.txt
+          content: "{{ step9_deployment_state.stdout }}"
+      when: step9_capture | bool
+
+    - name: Report safety capture directory
+      ansible.builtin.debug:
+        msg: >-
+          Step 9 safety capture stored privately on pluto at {{ step9_safety_dir }}.
+          Pass -e step9_safety_dir={{ step9_safety_dir }} to verify-postdeploy.yaml.
+      when: step9_capture | bool

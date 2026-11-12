@@ -1,0 +1,4 @@
+FROM jenkins/jenkins:{{ builder_jenkins_image_tag }}
+ENV JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+COPY files/plugins.txt /usr/share/jenkins/plugins.txt
+RUN jenkins-plugin-cli -f /usr/share/jenkins/plugins.txt

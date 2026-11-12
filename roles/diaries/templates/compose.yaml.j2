@@ -1,0 +1,213 @@
+services:
+
+{% if diaries_frontend_mode == 'standalone' and diaries_cloudflare_tunnel_enabled | bool %}
+  cloudflared:
+    container_name: diaries-cloudflared
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - "${CLOUDFLARE_TUNNEL_TOKEN}"
+{% endif %}
+
+{% if diaries_frontend_mode == 'standalone' %}
+  nginx:
+    container_name: diaries-nginx
+    image: nginx
+    restart: unless-stopped
+    depends_on:
+      diaries-client:
+        condition: service_healthy
+      diaries-responder:
+        condition: service_healthy
+      diaries-mqtt:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "9418:9418"
+    volumes:
+      - "./config/nginx/config/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - "./config/nginx/config/conf.d:/etc/nginx/conf.d:ro"
+      - "./config/nginx/config/files:/etc/nginx/files:ro"
+      - "./config/nginx/html:/usr/share/nginx/html:ro"
+      - "./config/nginx/log:/var/log/nginx"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "nginx -t || exit 1" ,
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+{% endif %}
+
+  diaries-db:
+    image: postgres:18-alpine
+    container_name: "{{ diaries_db_container_name }}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DIARIES_DB_NAME}
+      POSTGRES_USER: ${DIARIES_DB_USERNAME}
+      POSTGRES_PASSWORD: ${DIARIES_DB_PASSWORD}
+    ports:
+      - "${DIARIES_DB_HOST_PORT:-5433}:5432"
+    volumes:
+      - diaries-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  diaries-mqtt:
+    image: eclipse-mosquitto:2
+    container_name: "{{ diaries_mqtt_container_name }}"
+    restart: unless-stopped
+    environment:
+      DIARIES_MQTT_HEALTH_USERNAME: "{{ mosquitto_health_username }}"
+      DIARIES_MQTT_HEALTH_PASSWORD: "{{ mosquitto_health_password }}"
+    volumes:
+      - ./config/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./config/mosquitto/aclfile.txt:/mosquitto/config/aclfile.txt:ro
+      - ./config/mosquitto/pwfile.txt:/mosquitto/config/pwfile.txt:ro
+      - diaries-mqtt-data:/mosquitto/data
+      - diaries-mqtt-log:/mosquitto/log
+{% if diaries_frontend_mode == 'shared' %}
+    networks:
+      - default
+      - shared
+{% endif %}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mosquitto_sub -h localhost -p 1883 -u \"$${DIARIES_MQTT_HEALTH_USERNAME}\" -P \"$${DIARIES_MQTT_HEALTH_PASSWORD}\" -t '$$SYS/broker/version' -C 1 -W 5 >/dev/null 2>&1",
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+      start_period: 10s
+
+  diaries-responder:
+    image: "{{ diaries_responder_image_name }}:{{ diaries_responder_image_tag }}"
+    container_name: "{{ diaries_responder_container_name }}"
+    restart: unless-stopped
+    depends_on:
+      diaries-db:
+        condition: service_healthy
+      diaries-mqtt:
+        condition: service_healthy
+    environment:
+      CONFIG_FILE: /config/responder.json
+    volumes:
+      - "./config/responder/responder.json:/config/responder.json:ro"
+
+      - type: volume
+        source: nas-photo
+        target: /data/diaries
+        read_only: true
+        volume:
+          subpath: ${DIARIES_NAS_CONTENT_PATH}/diaries
+
+      - type: volume
+        source: nas-photo
+        target: /data/files
+        read_only: false
+        volume:
+          subpath: ${DIARIES_NAS_CONTENT_PATH}/${DIARIES_FILES_DIR}
+{% if diaries_frontend_mode == 'shared' %}
+    networks:
+      - default
+      - shared
+{% endif %}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl
+          --silent
+          --show-error
+          --output /dev/null
+          http://localhost:8081/diaries
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  diaries-client:
+    image: "{{ diaries_client_image_name }}:{{ diaries_client_image_tag }}"
+    container_name: "{{ diaries_client_container_name }}"
+    restart: unless-stopped
+    volumes:
+      - "./config/client/config.json:/usr/share/nginx/html/diaries/assets/config.json:ro"
+{% if diaries_frontend_mode == 'shared' %}
+    networks:
+      - default
+      - shared
+{% endif %}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --spider http://localhost:8080/diaries/ || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  diaries-web:
+    image: "{{ diaries_web_image_name }}:{{ diaries_web_image_tag }}"
+    container_name: "{{ diaries_web_container_name }}"
+    restart: unless-stopped
+    depends_on:
+      diaries-mqtt:
+        condition: service_healthy
+      diaries-responder:
+        condition: service_healthy
+    environment:
+      DIARIES_WEB_MQTT_USERNAME: "{{ mosquitto_web_user }}"
+      DIARIES_WEB_MQTT_PASSWORD: "{{ mosquitto_web_password }}"
+    volumes:
+      - "./config/web/diaries-web.json:/config/diaries-web.json:ro"
+{% if diaries_frontend_mode == 'shared' %}
+    networks:
+      - default
+      - shared
+{% endif %}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --spider http://localhost:8082/diaries-web/health/ready || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  diaries-db-data:
+  diaries-mqtt-data:
+  diaries-mqtt-log:
+  nas-photo:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: //${DIARIES_NAS_HOST}/${DIARIES_NAS_SHARE}
+      o: username=${DIARIES_NAS_USERNAME},password=${DIARIES_NAS_PASSWORD},vers=3.0,dir_mode=0700,file_mode=0600
+
+{% if diaries_frontend_mode == 'shared' %}
+networks:
+  default:
+  shared:
+    external: true
+    name: "{{ diaries_shared_network_name }}"
+{% endif %}

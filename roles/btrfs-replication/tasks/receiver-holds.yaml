@@ -1,0 +1,102 @@
+---
+# 0045-FEAT phase: Validate and preserve receiver checkpoint holds and receipts.
+- name: Native Btrfs | Inspect independent receiver checkpoint holds
+  ansible.builtin.stat:
+    path: /etc/btrfs-receiver-checkpoint-holds.json
+    follow: false
+  register: btrfs_receiver_holds_stat
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+  tags: [native-btrfs, receiver-manager]
+
+- name: Native Btrfs | Validate existing hold-file permissions
+  ansible.builtin.assert:
+    that:
+      - btrfs_receiver_holds_stat.stat.isreg | default(false)
+      - not (btrfs_receiver_holds_stat.stat.islnk | default(false))
+      - btrfs_receiver_holds_stat.stat.pw_name == 'root'
+      - btrfs_receiver_holds_stat.stat.mode == '0600'
+    fail_msg: Existing receiver checkpoint hold file is unsafe; refusing to replace it
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+    - btrfs_receiver_holds_stat.stat.exists | default(false)
+  tags: [native-btrfs, receiver-manager]
+
+- name: Native Btrfs | Read existing hold state without altering it
+  ansible.builtin.slurp:
+    src: /etc/btrfs-receiver-checkpoint-holds.json
+  register: btrfs_receiver_holds_existing
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+    - btrfs_receiver_holds_stat.stat.exists | default(false)
+  tags: [native-btrfs, receiver-manager]
+
+- name: Native Btrfs | Validate mandatory checkpoints in existing hold state
+  ansible.builtin.assert:
+    that:
+      - hold_data.schema == 1
+      - hold_data.holds is mapping
+      - (hold_data.holds[item.key] | default({})).source_uuids | default({}) == item.value.source_uuids
+      - (hold_data.holds[item.key] | default({})).reason | default('') | length > 0
+    fail_msg: Required receiver checkpoint hold is missing or has an incorrect UUID
+  vars:
+    hold_data: '{{ btrfs_receiver_holds_existing.content | b64decode | from_json }}'
+  loop: '{{ btrfs_native_receiver_checkpoint_holds | dict2items }}'
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+    - btrfs_receiver_holds_stat.stat.exists | default(false)
+  tags: [native-btrfs, receiver-manager]
+
+- name: Native Btrfs | Initialise receiver checkpoint holds only when absent
+  ansible.builtin.copy:
+    dest: /etc/btrfs-receiver-checkpoint-holds.json
+    content: '{{ {"schema": 1, "holds": btrfs_native_receiver_checkpoint_holds} | to_nice_json }}
+'
+    owner: root
+    group: root
+    mode: '0600'
+    force: false
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+    - not (btrfs_receiver_holds_stat.stat.exists | default(false))
+  tags: [native-btrfs, receiver-manager]
+
+# Receipt identities must agree with the mandatory hold file prior to
+# configuring the manager. This does not change receipts or snapshots.
+- name: Native Btrfs | Read mandatory receiver checkpoint receipts
+  ansible.builtin.slurp:
+    src: '/@data/mars-received/.replication-state/{{ item.key }}.json'
+  loop: '{{ btrfs_native_receiver_checkpoint_holds | dict2items }}'
+  register: btrfs_receiver_hold_receipts
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+  tags: [native-btrfs, receiver-manager]
+
+- name: Native Btrfs | Validate mandatory receiver checkpoint receipt identities
+  ansible.builtin.assert:
+    that:
+      - receipt.schema == 1
+      - receipt.snapshot == item.item.key
+      - receipt.destination == '/@data/mars-received/@data/' ~ item.item.key
+      - receipt.source_uuid == item.item.value.source_uuids['@data']
+      - receipt.received_uuid == item.item.value.source_uuids['@data']
+      - receipt.read_only_verified is sameas true
+    fail_msg: Mandatory checkpoint receipt does not match the protected source identity
+  vars:
+    receipt: '{{ item.content | b64decode | from_json }}'
+  loop: '{{ btrfs_receiver_hold_receipts.results | default([]) }}'
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+    - not (item.skipped | default(false))
+  tags: [native-btrfs, receiver-manager]

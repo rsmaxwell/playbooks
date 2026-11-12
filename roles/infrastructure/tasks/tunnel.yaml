@@ -1,0 +1,26 @@
+---
+
+- name: infrastructure:tunnel | Create directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: ~/projects, mode: '0700' }
+    - { path: "{{ infrastructure_project_dir }}", mode: '0700' }
+    - { path: "{{ infrastructure_project_dir }}/compose.d", mode: '0700' }
+    - { path: "{{ infrastructure_project_dir }}/tunnel", mode: '0700' }
+
+
+- name: infrastructure:tunnel | Copy compose files
+  ansible.builtin.copy:
+    src: "tunnel/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {
+        src: tunnel-service.fragment,
+        dest: "{{ infrastructure_project_dir }}/compose.d/",
+        mode: '0644'
+      }
+

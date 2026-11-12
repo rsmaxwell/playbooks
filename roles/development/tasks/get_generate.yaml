@@ -1,0 +1,11 @@
+---
+
+- name: get the latest version of the 'generate' tool
+  ansible.builtin.shell:
+    cmd: "~/scripts/get_generate.sh"
+  register: result
+  changed_when: result.rc >= 1
+  failed_when:  result.rc >= 2
+- debug: var=result.stdout_lines
+
+

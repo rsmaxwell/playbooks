@@ -1,0 +1,8 @@
+[Unit]
+Description=Prune timestamp-named Btrfs snapshots
+After=local-fs.target
+ConditionPathExists={{ btrfs_snapshot_manager_config_path }}
+
+[Service]
+Type=oneshot
+ExecStart={{ btrfs_snapshot_manager_path }} --config {{ btrfs_snapshot_manager_config_path }} prune --max-delete {{ btrfs_snapshot_prune_max_delete }}

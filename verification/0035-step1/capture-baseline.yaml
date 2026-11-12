@@ -1,0 +1,432 @@
+---
+# 0035-FEAT Step 1 — read-only reconciliation of the live host baseline.
+#
+# This playbook intentionally performs no deployment, snapshot creation/pruning,
+# transfer, scheduler change, or data mutation. Run from mango with the normal
+# production inventory and preserve the console output as Step 1 evidence.
+
+- name: 0035 Step 1 | Reconcile pluto filesystem and publication baseline
+  hosts: pluto
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Step 1 | Capture pluto filesystem identity and Btrfs presence
+      ansible.builtin.shell: |
+        set -u
+        echo '=== root filesystem ==='
+        findmnt -n -T / -o TARGET,SOURCE,FSTYPE,UUID,OPTIONS || true
+        echo '=== Diaries project filesystem ==='
+        for path in \
+          /home/richard/projects/diaries \
+          /home/richard/projects/diaries/data \
+          /home/richard/projects/diaries/data/diaries-backup \
+          /home/richard/projects/diaries/data/dataset-backups/production; do
+          if [ -e "$path" ] || [ -L "$path" ]; then
+            printf '%s\t' "$path"
+            findmnt -n -T "$path" -o TARGET,SOURCE,FSTYPE,UUID || true
+            stat -c 'type=%F mode=%a owner=%U:%G inode=%i path=%n' "$path" || true
+            if [ -L "$path" ]; then
+              printf 'symlink-target=%s\n' "$(readlink -f "$path" 2>/dev/null || true)"
+            fi
+          else
+            printf '%s\tabsent\n' "$path"
+          fi
+        done
+        echo '=== all Btrfs mounts, if any ==='
+        findmnt -t btrfs -o TARGET,SOURCE,FSTYPE,UUID,OPTIONS || true
+      args:
+        executable: /bin/bash
+      register: step1_pluto_filesystem
+      changed_when: false
+
+    - name: Step 1 | Capture pluto backup publisher and relevant schedulers
+      ansible.builtin.shell: |
+        set -u
+        units='diaries-complete-backup-publish.timer diaries-complete-backup-publish.service btrfs-snapshot-create.timer btrfs-snapshot-prune.timer snapper-timeline.timer snapper-boot.timer snapper-cleanup.timer'
+        for unit in $units; do
+          echo "=== $unit ==="
+          systemctl show "$unit" \
+            -p LoadState -p UnitFileState -p ActiveState -p SubState \
+            -p Result -p ExecMainStatus -p LastTriggerUSec -p NextElapseUSecRealtime \
+            --no-pager 2>&1 || true
+          systemctl cat "$unit" --no-pager 2>&1 | sed -n '1,120p' || true
+        done
+        echo '=== matching timers ==='
+        systemctl list-timers --all --no-pager 2>/dev/null | grep -E 'diaries-complete-backup|btrfs-snapshot|snapper' || true
+        echo '=== root crontab ==='
+        crontab -u root -l 2>&1 || true
+        echo '=== richard crontab ==='
+        crontab -u richard -l 2>&1 || true
+      args:
+        executable: /bin/bash
+      register: step1_pluto_schedulers
+      changed_when: false
+
+    - name: Step 1 | Capture pluto current publication identity without restoring it
+      ansible.builtin.shell: |
+        set -u
+        project=/home/richard/projects/diaries
+        echo '=== published backup identity ==='
+        if [ -x "$project/scripts/complete-dataset-publisher.py" ] && [ -d "$project/data/diaries-backup" ]; then
+          "$project/scripts/complete-dataset-publisher.py" \
+            --published-root "$project/data/diaries-backup" show-current-id 2>&1 || true
+        else
+          echo 'publisher helper or published root absent'
+        fi
+        echo '=== manifest identity ==='
+        manifest="$project/data/diaries-backup/dataset-manifest.json"
+        if [ -f "$manifest" ]; then
+          python3 - "$manifest" <<'PY'
+        import json, sys
+        value = json.load(open(sys.argv[1], encoding='utf-8'))
+        for key in ('backupId', 'logicalDataset', 'createdAt', 'createdAtUtc', 'schemaVersion', 'schema'):
+            if key in value:
+                print(f'{key}={value[key]}')
+        PY
+        else
+          echo 'dataset-manifest.json absent'
+        fi
+        echo '=== currently running backup/transfer processes ==='
+        ps -eo pid=,ppid=,user=,etimes=,comm=,args= | \
+          grep -E '[b]ackup-dataset|[c]omplete-dataset-publisher|[r]sync|[b]trfs-native|[d]iaries-pull' || true
+      args:
+        executable: /bin/bash
+      register: step1_pluto_publication
+      changed_when: false
+
+    - name: Step 1 | Show pluto baseline
+      ansible.builtin.debug:
+        msg:
+          - "PLUTO FILESYSTEM:\n{{ step1_pluto_filesystem.stdout }}"
+          - "PLUTO SCHEDULERS:\n{{ step1_pluto_schedulers.stdout }}"
+          - "PLUTO PUBLICATION:\n{{ step1_pluto_publication.stdout }}"
+
+- name: 0035 Step 1 | Reconcile mars snapshot source and scheduler baseline
+  hosts: mars
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Step 1 | Capture mars filesystem, subvolume and source identities
+      ansible.builtin.shell: |
+        set -u
+        echo '=== filesystem mounts ==='
+        for path in /media/usb /media/usb/@data /media/usb/@data/backup /media/usb/@snapshots; do
+          if [ -e "$path" ]; then
+            printf '%s\t' "$path"
+            findmnt -n -T "$path" -o TARGET,SOURCE,FSTYPE,UUID,OPTIONS || true
+          else
+            printf '%s\tabsent\n' "$path"
+          fi
+        done
+        echo '=== Btrfs filesystem ==='
+        btrfs filesystem show /media/usb 2>&1 || true
+        echo '=== managed source subvolumes ==='
+        for path in /media/usb/@data /media/usb/@snapshots; do
+          echo "--- $path ---"
+          btrfs subvolume show "$path" 2>&1 || true
+        done
+        echo '=== relevant subvolume IDs / UUID lineage ==='
+        btrfs subvolume list -u -q -R /media/usb 2>&1 | \
+          grep -E ' path (@data$|@snapshots$|@snapshots/(root|@data)/[0-9]{8}-[0-9]{6}Z$|\.snapshots/)' || true
+        echo '=== read-only managed timestamp snapshots ==='
+        btrfs subvolume list -r -u -q -R /media/usb 2>&1 | \
+          grep -E ' path @snapshots/(root|@data)/[0-9]{8}-[0-9]{6}Z$' || true
+      args:
+        executable: /bin/bash
+      register: step1_mars_btrfs
+      changed_when: false
+
+    - name: Step 1 | Capture mars snapshot-manager configuration and state
+      ansible.builtin.shell: |
+        set -u
+        echo '=== installed tools ==='
+        for path in \
+          /usr/local/sbin/btrfs-snapshot-manager \
+          /usr/local/sbin/diaries-backup-history \
+          /usr/local/bin/btrfs-native-push \
+          /usr/local/libexec/btrfs-native-endpoint; do
+          if [ -f "$path" ]; then
+            stat -c 'mode=%a owner=%U:%G size=%s path=%n' "$path"
+            sha256sum "$path" || true
+          else
+            echo "absent: $path"
+          fi
+        done
+        echo '=== snapshot manager configuration ==='
+        if [ -f /etc/btrfs-snapshot-manager.json ]; then
+          python3 - <<'PY'
+        import json
+        path = '/etc/btrfs-snapshot-manager.json'
+        value = json.load(open(path, encoding='utf-8'))
+        print(json.dumps(value, indent=2, sort_keys=True))
+        PY
+        else
+          echo 'absent: /etc/btrfs-snapshot-manager.json'
+        fi
+        echo '=== snapshot manager status ==='
+        /usr/local/sbin/btrfs-snapshot-manager status 2>&1 || true
+        echo '=== snapshot manager list ==='
+        /usr/local/sbin/btrfs-snapshot-manager list 2>&1 || true
+        echo '=== checkpoint holds ==='
+        cat /media/usb/@snapshots/.checkpoint-holds.json 2>&1 || true
+        echo '=== replication protection ==='
+        cat /media/usb/@snapshots/.replication-protection.json 2>&1 || true
+      args:
+        executable: /bin/bash
+      register: step1_mars_manager
+      changed_when: false
+
+    - name: Step 1 | Capture mars Btrfs quota-rescan status independently
+      ansible.builtin.shell: |
+        set -u
+        echo '=== mars Btrfs quota rescan (/media/usb) ==='
+        # Query only: -s reports state and does not initiate a rescan.
+        timeout --signal=TERM --kill-after=5s 15s btrfs quota rescan -s /media/usb 2>&1
+        rc=$?
+        echo "QUOTA_RESCAN_QUERY_EXIT_CODE=$rc (124=timeout, 137=forced kill)"
+      args:
+        executable: /bin/bash
+      register: step1_mars_quota
+      changed_when: false
+
+    - name: Step 1 | Capture mars Snapper legacy inventory
+      ansible.builtin.shell: |
+        set -u
+        echo '=== snapper binary ==='
+        if ! command -v snapper; then
+          echo 'SNAPPER_STATUS=UNAVAILABLE (binary absent)'
+        else
+          # Bound every daemon-dependent command independently. Preserve incomplete
+          # inventory as an explicit finding, not as a successful empty list.
+          echo '=== snapper configs (bounded to 20s) ==='
+          configs_output="$(timeout --signal=TERM --kill-after=5s 20s snapper list-configs 2>&1)"
+          rc=$?
+          printf '%s\n' "$configs_output"
+          if [ "$rc" -ne 0 ]; then
+            echo "SNAPPER_CONFIGS_STATUS=INCOMPLETE exit_code=$rc (124=timeout, 137=forced kill)"
+          else
+            echo 'SNAPPER_CONFIGS_STATUS=COMPLETE'
+            configs="$(printf '%s\n' "$configs_output" | awk 'NR > 2 && $1 !~ /^-+$/ {print $1}')"
+            for config in $configs; do
+              echo "=== snapper config: $config (bounded to 30s) ==="
+              timeout --signal=TERM --kill-after=5s 30s snapper -c "$config" list 2>&1
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "SNAPPER_INVENTORY_STATUS=INCOMPLETE config=$config exit_code=$rc (124=timeout, 137=forced kill)"
+              else
+                echo "SNAPPER_INVENTORY_STATUS=COMPLETE config=$config"
+              fi
+            done
+          fi
+        fi
+      args:
+        executable: /bin/bash
+      register: step1_mars_snapper
+      changed_when: false
+
+    - name: Step 1 | Capture mars cron, timers and transfer state
+      ansible.builtin.shell: |
+        set -u
+        units='diaries-pull.timer diaries-pull.service btrfs-snapshot-create.timer btrfs-snapshot-create.service btrfs-snapshot-prune.timer btrfs-snapshot-prune.service btrfs-native-push.timer btrfs-native-push.service snapper-timeline.timer snapper-boot.timer snapper-cleanup.timer'
+        for unit in $units; do
+          echo "=== $unit ==="
+          systemctl show "$unit" \
+            -p LoadState -p UnitFileState -p ActiveState -p SubState \
+            -p Result -p ExecMainStatus -p LastTriggerUSec -p NextElapseUSecRealtime \
+            --no-pager 2>&1 || true
+          systemctl cat "$unit" --no-pager 2>&1 | sed -n '1,120p' || true
+        done
+        echo '=== matching timers ==='
+        systemctl list-timers --all --no-pager 2>/dev/null | \
+          grep -E 'diaries-pull|btrfs-snapshot|btrfs-native-push|snapper' || true
+        echo '=== root crontab ==='
+        crontab -u root -l 2>&1 || true
+        echo '=== richard crontab ==='
+        crontab -u richard -l 2>&1 || true
+        echo '=== historical remote-rsync phase in root wrapper ==='
+        if [ -f /root/scripts/backup/backup.sh ]; then
+          grep -nE 'remote|backup\.sh' /root/scripts/backup/backup.sh 2>&1 || true
+        else
+          echo 'absent: /root/scripts/backup/backup.sh'
+        fi
+        echo '=== currently running backup/transfer processes ==='
+        ps -eo pid=,ppid=,user=,etimes=,comm=,args= | \
+          grep -E '[r]sync|[b]trfs (send|receive)|[b]trfs-native|[d]iaries-pull|/scripts/backup/[b]ackup\.sh' || true
+      args:
+        executable: /bin/bash
+      register: step1_mars_schedulers
+      changed_when: false
+
+    - name: Step 1 | Show mars baseline
+      ansible.builtin.debug:
+        msg:
+          - "MARS BTRFS:\n{{ step1_mars_btrfs.stdout }}"
+          - "MARS MANAGER:\n{{ step1_mars_manager.stdout }}"
+          - "MARS QUOTA RESCAN:\n{{ step1_mars_quota.stdout }}"
+          - "MARS SNAPPER:\n{{ step1_mars_snapper.stdout }}"
+          - "MARS SCHEDULERS/TRANSFERS:\n{{ step1_mars_schedulers.stdout }}"
+
+- name: 0035 Step 1 | Reconcile backup receiver and historical mirror baseline
+  hosts: backup
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Step 1 | Capture backup filesystem, subvolume and receiver identities
+      ansible.builtin.shell: |
+        set -u
+        echo '=== filesystem mounts ==='
+        for path in / /@data /@data/backup /@data/mars-received /@data/mars-received/@data /@snapshots; do
+          if [ -e "$path" ]; then
+            printf '%s\t' "$path"
+            findmnt -n -T "$path" -o TARGET,SOURCE,FSTYPE,UUID,OPTIONS || true
+            stat -c 'type=%F mode=%a owner=%U:%G inode=%i path=%n' "$path" || true
+          else
+            printf '%s\tabsent\n' "$path"
+          fi
+        done
+        echo '=== Btrfs filesystem ==='
+        btrfs filesystem show / 2>&1 || true
+        echo '=== managed/local subvolumes ==='
+        for path in /@data /@snapshots; do
+          echo "--- $path ---"
+          btrfs subvolume show "$path" 2>&1 || true
+        done
+        echo '=== relevant subvolume IDs / UUID lineage ==='
+        btrfs subvolume list -u -q -R / 2>&1 | \
+          grep -E ' path (@data$|@snapshots$|@snapshots/(root|@data)/[0-9]{8}-[0-9]{6}Z$|@data/mars-received/@data/[0-9]{8}-[0-9]{6}Z$|\.snapshots/)' || true
+        echo '=== read-only managed/received snapshots ==='
+        btrfs subvolume list -r -u -q -R / 2>&1 | \
+          grep -E ' path (@snapshots/(root|@data)/[0-9]{8}-[0-9]{6}Z$|@data/mars-received/@data/[0-9]{8}-[0-9]{6}Z$)' || true
+      args:
+        executable: /bin/bash
+      register: step1_backup_btrfs
+      changed_when: false
+
+    - name: Step 1 | Capture backup snapshot-manager and accepted-receiver state
+      ansible.builtin.shell: |
+        set -u
+        echo '=== installed tools ==='
+        for path in \
+          /usr/local/sbin/btrfs-snapshot-manager \
+          /usr/local/sbin/diaries-backup-history \
+          /usr/local/bin/btrfs-native-push-receiver \
+          /usr/local/libexec/btrfs-native-endpoint; do
+          if [ -f "$path" ]; then
+            stat -c 'mode=%a owner=%U:%G size=%s path=%n' "$path"
+            sha256sum "$path" || true
+          else
+            echo "absent: $path"
+          fi
+        done
+        echo '=== snapshot manager configuration ==='
+        if [ -f /etc/btrfs-snapshot-manager.json ]; then
+          python3 - <<'PY'
+        import json
+        path = '/etc/btrfs-snapshot-manager.json'
+        value = json.load(open(path, encoding='utf-8'))
+        print(json.dumps(value, indent=2, sort_keys=True))
+        PY
+        else
+          echo 'absent: /etc/btrfs-snapshot-manager.json'
+        fi
+        echo '=== snapshot manager status ==='
+        /usr/local/sbin/btrfs-snapshot-manager status 2>&1 || true
+        echo '=== snapshot manager list ==='
+        /usr/local/sbin/btrfs-snapshot-manager list 2>&1 || true
+        echo '=== accepted native receiver receipts ==='
+        if [ -x /usr/local/bin/btrfs-native-push-receiver ]; then
+          sudo -u richard /usr/local/bin/btrfs-native-push-receiver --list 2>&1 || true
+        else
+          echo 'receiver helper absent'
+        fi
+        echo '=== receipt files ==='
+        find /@data/mars-received/.replication-state -maxdepth 1 -type f \
+          -name '[0-9]*Z.json' -printf '%f\n' 2>/dev/null | sort || true
+      args:
+        executable: /bin/bash
+      register: step1_backup_manager
+      changed_when: false
+
+    - name: Step 1 | Capture backup Btrfs quota-rescan status independently
+      ansible.builtin.shell: |
+        set -u
+        echo '=== backup Btrfs quota rescan (/) ==='
+        # Query only: -s reports state and does not initiate a rescan.
+        timeout --signal=TERM --kill-after=5s 15s btrfs quota rescan -s / 2>&1
+        rc=$?
+        echo "QUOTA_RESCAN_QUERY_EXIT_CODE=$rc (124=timeout, 137=forced kill)"
+      args:
+        executable: /bin/bash
+      register: step1_backup_quota
+      changed_when: false
+
+    - name: Step 1 | Capture backup Snapper legacy inventory
+      ansible.builtin.shell: |
+        set -u
+        echo '=== snapper binary ==='
+        if ! command -v snapper; then
+          echo 'SNAPPER_STATUS=UNAVAILABLE (binary absent)'
+        else
+          # Bound every daemon-dependent command independently. Preserve incomplete
+          # inventory as an explicit finding, not as a successful empty list.
+          echo '=== snapper configs (bounded to 20s) ==='
+          configs_output="$(timeout --signal=TERM --kill-after=5s 20s snapper list-configs 2>&1)"
+          rc=$?
+          printf '%s\n' "$configs_output"
+          if [ "$rc" -ne 0 ]; then
+            echo "SNAPPER_CONFIGS_STATUS=INCOMPLETE exit_code=$rc (124=timeout, 137=forced kill)"
+          else
+            echo 'SNAPPER_CONFIGS_STATUS=COMPLETE'
+            configs="$(printf '%s\n' "$configs_output" | awk 'NR > 2 && $1 !~ /^-+$/ {print $1}')"
+            for config in $configs; do
+              echo "=== snapper config: $config (bounded to 30s) ==="
+              timeout --signal=TERM --kill-after=5s 30s snapper -c "$config" list 2>&1
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "SNAPPER_INVENTORY_STATUS=INCOMPLETE config=$config exit_code=$rc (124=timeout, 137=forced kill)"
+              else
+                echo "SNAPPER_INVENTORY_STATUS=COMPLETE config=$config"
+              fi
+            done
+          fi
+        fi
+      args:
+        executable: /bin/bash
+      register: step1_backup_snapper
+      changed_when: false
+
+    - name: Step 1 | Capture backup cron, timers and transfer state
+      ansible.builtin.shell: |
+        set -u
+        units='btrfs-snapshot-create.timer btrfs-snapshot-create.service btrfs-snapshot-prune.timer btrfs-snapshot-prune.service snapper-timeline.timer snapper-boot.timer snapper-cleanup.timer'
+        for unit in $units; do
+          echo "=== $unit ==="
+          systemctl show "$unit" \
+            -p LoadState -p UnitFileState -p ActiveState -p SubState \
+            -p Result -p ExecMainStatus -p LastTriggerUSec -p NextElapseUSecRealtime \
+            --no-pager 2>&1 || true
+          systemctl cat "$unit" --no-pager 2>&1 | sed -n '1,120p' || true
+        done
+        echo '=== matching timers ==='
+        systemctl list-timers --all --no-pager 2>/dev/null | \
+          grep -E 'btrfs-snapshot|btrfs-native|snapper' || true
+        echo '=== root crontab ==='
+        crontab -u root -l 2>&1 || true
+        echo '=== richard crontab ==='
+        crontab -u richard -l 2>&1 || true
+        echo '=== currently running backup/transfer processes ==='
+        ps -eo pid=,ppid=,user=,etimes=,comm=,args= | \
+          grep -E '[r]sync|[b]trfs (send|receive)|[b]trfs-native|[d]iaries-pull|/scripts/backup/[b]ackup\.sh' || true
+      args:
+        executable: /bin/bash
+      register: step1_backup_schedulers
+      changed_when: false
+
+    - name: Step 1 | Show backup baseline
+      ansible.builtin.debug:
+        msg:
+          - "BACKUP BTRFS:\n{{ step1_backup_btrfs.stdout }}"
+          - "BACKUP MANAGER/RECEIVER:\n{{ step1_backup_manager.stdout }}"
+          - "BACKUP QUOTA RESCAN:\n{{ step1_backup_quota.stdout }}"
+          - "BACKUP SNAPPER:\n{{ step1_backup_snapper.stdout }}"
+          - "BACKUP SCHEDULERS/TRANSFERS:\n{{ step1_backup_schedulers.stdout }}"

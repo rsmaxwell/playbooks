@@ -1,0 +1,24 @@
+---
+
+
+
+- name: Template configuration files
+  template:
+    src: "{{ item.src }}/{{ item.name }}.j2"
+    dest: "{{ item.dest }}/{{ item.name }}"
+  loop:
+    - { src: ".", name: "maven-repository-info", dest: "{{ lookup('ansible.builtin.env', 'HOME') }}/.m2" }
+
+
+
+- name: Synchronize files
+  synchronize:
+    src: "."
+    dest: "~"
+  register: result
+- debug:
+    var: result.stdout_lines
+
+
+
+

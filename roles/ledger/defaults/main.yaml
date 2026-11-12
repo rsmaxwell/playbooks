@@ -1,0 +1,115 @@
+---
+projects_dir: "{{ ansible_facts['env']['HOME'] }}/projects"
+ledger_project_dir: "{{ projects_dir }}/ledger"
+
+ledger_user: "{{ ansible_user }}"
+ledger_group: "{{ ansible_user }}"
+
+ledger_container_prefix: ledger
+
+ledger_db_name: ledger
+ledger_db_username: ledger
+ledger_db_password: "{{ vault_ledger_db_password }}"
+
+ledger_bootstrap_admin_username: ledger-admin
+ledger_bootstrap_admin_password: "{{ vault_ledger_bootstrap_admin_password }}"
+ledger_bootstrap_admin_display_name: Admin
+ledger_bootstrap_admin_roles: ROLE_ADMIN,ROLE_STAFF
+
+ledger_jwt_secret: "{{ vault_ledger_jwt_secret }}"
+ledger_access_token_seconds: 900
+
+# Server logging levels. Keep production defaults quiet; temporarily override
+# these per host or with --extra-vars when deeper diagnostics are required.
+ledger_log_level_root: INFO
+ledger_log_level_application: INFO
+ledger_log_level_spring_web: INFO
+
+# Optional Ledger server request/response payload logging.
+# Keep disabled for normal production operation.
+ledger_log_payloads_enabled: true
+ledger_log_payload_max_bytes: 16384
+ledger_log_payload_excluded_paths: "/api/auth/login,/api/auth/refresh"
+ledger_log_payload_redacted_fields: "password,token,accessToken,refreshToken,authorization,secret"
+
+
+ledger_server_image_name: rsmaxwell/ledger-server
+ledger_client_image_name: rsmaxwell/ledger-client
+
+# Selector for the Git version.
+#
+# Supported forms:
+#   0.1.0       -> Git tag v0.1.0
+#   v0.1.0      -> Git tag v0.1.0
+#   main        -> Git branch main
+#   integration -> Git branch main
+#   <commit>    -> exact Git commit
+#
+# Docker image tags are selected separately below.
+
+# Fallback used when no component-specific default is set.
+ledger_image_tag: "integration"
+
+
+
+# Effective tags used by compose.yaml.j2.
+# An explicit extra variable with the same name overrides these role defaults.
+ledger_server_image_tag: "0.1.4-build-21"
+ledger_client_image_tag: "0.1.4-build-26"
+
+
+
+# Production frontend topology.
+#
+# standalone:
+#   Ledger owns its Nginx container and, subject to the existing exposure
+#   controls below, its HTTP host port and optional Cloudflare tunnel.
+#
+# shared:
+#   Ledger does not create an Nginx or Cloudflare container. The Ledger client
+#   and server join the infrastructure external Docker network and the shared
+#   infrastructure Nginx routes /ledger/ and /ledger/api/ to them.
+ledger_frontend_mode: standalone
+
+ledger_nginx_image: nginx:alpine
+ledger_nginx_container_name: "{{ ledger_container_prefix }}-nginx"
+ledger_http_port: 80
+ledger_server_name: "{{ inventory_hostname }}"
+
+# Shared-frontend integration. These values are used only when
+# ledger_frontend_mode == 'shared'.
+ledger_shared_network_name: "{{ shared_network_name | default('infrastructure_shared') }}"
+ledger_shared_frontend_project_dir: "{{ projects_dir }}/infrastructure"
+ledger_shared_frontend_nginx_container_name: infra-nginx
+ledger_shared_frontend_systemd_unit: infrastructure-compose.service
+
+# Keep the application route inactive while Ledger is stopped. The playbook
+# installs the source file under config/files; start.sh creates the symlink in
+# config/conf.d/locations and stop.sh removes it before stopping Ledger.
+ledger_shared_frontend_file_dir: "{{ ledger_shared_frontend_project_dir }}/nginx/config/files"
+ledger_shared_frontend_file: "{{ ledger_shared_frontend_file_dir }}/ledger.conf"
+ledger_shared_frontend_location_dir: "{{ ledger_shared_frontend_project_dir }}/nginx/config/conf.d/locations"
+ledger_shared_frontend_location_file: "{{ ledger_shared_frontend_location_dir }}/ledger.conf"
+ledger_shared_frontend_location_symlink_target: "../../files/ledger.conf"
+
+# Shared Nginx logs live in the infrastructure project. The API route gets a
+# Ledger-specific log so logs.sh requests remains useful in shared mode.
+ledger_shared_frontend_log_dir: "{{ ledger_shared_frontend_project_dir }}/nginx/log"
+ledger_shared_frontend_api_log: "{{ ledger_shared_frontend_log_dir }}/ledger-api-access.log"
+ledger_shared_frontend_error_log: "{{ ledger_shared_frontend_log_dir }}/error.log"
+
+# Optional Cloudflare Tunnel integration for remote HTTPS access.
+# The application-specific tunnel is created only in standalone frontend mode.
+# In shared mode the infrastructure stack owns any Cloudflare tunnel.
+ledger_cloudflare_tunnel_enabled: false
+ledger_cloudflare_image: cloudflare/cloudflared:latest
+ledger_cloudflare_container_name: "{{ ledger_container_prefix }}-cloudflared"
+ledger_cloudflare_tunnel_token: "{{ vault_ledger_cloudflare_tunnel_token | default('') }}"
+
+# Host exposure/firewall policy for standalone mode. Shared mode leaves host
+# ingress policy to the infrastructure deployment.
+ledger_internet_exposed: false
+
+# Publishing HTTP directly from an Internet-exposed standalone host must be an
+# explicit choice. Internal standalone hosts continue to publish ledger_http_port.
+ledger_direct_http_enabled: false

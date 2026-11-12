@@ -1,0 +1,37 @@
+#!/bin/bash
+
+set -euo pipefail
+
+ARCHIVA_PROJECT_DIR="{{ archiva_project_dir }}"
+INFRASTRUCTURE_PROJECT_DIR="{{ infrastructure_project_dir }}"
+NGINX_SOURCE_FILE="{{ archiva_nginx_source_file }}"
+NGINX_LOCATION_FILE="{{ archiva_nginx_location_file }}"
+NGINX_SYMLINK_TARGET="{{ archiva_nginx_location_symlink_target }}"
+
+if [[ ! -f "${NGINX_SOURCE_FILE}" ]]; then
+    echo "ERROR: Archiva Nginx source file '${NGINX_SOURCE_FILE}' does not exist." >&2
+    echo "Run the Archiva Ansible playbook before starting Archiva." >&2
+    exit 1
+fi
+
+echo "Change to the Archiva project directory"
+cd "${ARCHIVA_PROJECT_DIR}"
+
+echo "Start the Archiva stack"
+docker compose up -d
+
+echo "Wait for Archiva to start"
+sleep 5
+
+echo "Activate the Archiva route in shared Nginx"
+ln -sfn "${NGINX_SYMLINK_TARGET}" "${NGINX_LOCATION_FILE}"
+
+cd "${INFRASTRUCTURE_PROJECT_DIR}"
+
+if ! docker compose exec -T nginx nginx -t; then
+    echo "ERROR: Shared Nginx configuration is invalid; removing Archiva route." >&2
+    rm -f "${NGINX_LOCATION_FILE}"
+    exit 1
+fi
+
+docker compose exec -T nginx nginx -s reload

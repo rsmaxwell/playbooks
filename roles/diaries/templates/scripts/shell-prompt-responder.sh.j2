@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# ==============================================================================
+# shell-prompt-responder.sh
+#
+# Open an interactive shell inside the Responder container used by the
+# production Diaries stack.
+#
+# The script:
+#   - locates the installed Diaries project;
+#   - validates the generated Compose and environment files;
+#   - validates the resolved Compose configuration;
+#   - checks that the diaries-responder service is present and running;
+#   - opens an interactive /bin/sh session in that container.
+#
+# Typical commands after entering the container include:
+#     ps
+#     env | sort
+#     cat /config/responder.json
+# ==============================================================================
+
+
+# ------------------------------------------------------------------------------
+# Define the installed production runtime files.
+# ------------------------------------------------------------------------------
+
+PROJECT_DIR="{{ diaries_project_dir }}"
+COMPOSE_FILE="${PROJECT_DIR}/compose.yaml"
+ENV_FILE="${PROJECT_DIR}/.env"
+SERVICE="diaries-responder"
+
+
+# ------------------------------------------------------------------------------
+# Validate the generated runtime files.
+# ------------------------------------------------------------------------------
+
+if [[ ! -d "${PROJECT_DIR}" ]]; then
+    echo "ERROR: Diaries project directory not found: ${PROJECT_DIR}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+    echo "ERROR: Compose file not found: ${COMPOSE_FILE}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+    echo "ERROR: Environment file not found: ${ENV_FILE}" >&2
+    exit 1
+fi
+
+cd "${PROJECT_DIR}"
+
+
+# ------------------------------------------------------------------------------
+# Validate the resolved Compose configuration.
+# ------------------------------------------------------------------------------
+
+docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    config --quiet
+
+if ! docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    config --services | grep -Fxq "${SERVICE}"; then
+    echo "ERROR: The ${SERVICE} service is not present in this Diaries deployment." >&2
+    exit 1
+fi
+
+
+# ------------------------------------------------------------------------------
+# Make sure the target service is running before opening the shell.
+# ------------------------------------------------------------------------------
+
+if ! docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    ps --status running --services | grep -Fxq "${SERVICE}"; then
+    echo "ERROR: The ${SERVICE} service is not running." >&2
+    echo "Start the Diaries stack before using this script." >&2
+    exit 1
+fi
+
+
+# ------------------------------------------------------------------------------
+# Open the interactive shell.
+# ------------------------------------------------------------------------------
+
+echo "Opening shell in the Diaries production Responder container..."
+echo 'Type "exit" to return to this host prompt.'
+echo
+
+exec docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    exec "${SERVICE}" sh

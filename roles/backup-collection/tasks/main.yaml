@@ -1,0 +1,80 @@
+---
+
+- name: Get normal user account information
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
+  tags:
+    - always
+
+- name: Set normal user home directory
+  ansible.builtin.set_fact:
+    normal_user_home: "{{ ansible_facts['getent_passwd'][ansible_user][4] }}"
+  tags:
+    - always
+
+- name: Validate 0034 unattended backup scheduling controls
+  ansible.builtin.assert:
+    that:
+      - legacy_remote_rsync_push_enabled is boolean
+      - diaries_pull_schedule_enabled is boolean
+    fail_msg: >-
+      Step 11.4 scheduling controls must be explicit booleans. The final acceptance
+      verifier separately requires the legacy mars-to-backup rsync phase to be disabled
+      before native off-site scheduling is accepted.
+  tags:
+    - always
+
+- name: Install utilities
+  ansible.builtin.import_tasks: utilities.yaml
+  tags:
+    - utils
+
+- name: Mount the external USB drive
+  ansible.posix.mount:
+    path: /media/usb
+    src: "UUID={{ backup_disk_uuid }}"
+    fstype: btrfs
+    state: mounted
+  become: true
+  tags:
+    - usb
+
+# Install the opt-in receiver before snapshot preflight so a fresh integration
+# deployment can create its final pluto destination directory first. No transfer
+# or schedule is started by this task file.
+- name: Install optional Diaries pull helper
+  ansible.builtin.import_tasks: diaries_pull.yaml
+  tags:
+    - diaries-pull
+
+- name: Grant optional read-only access to mars backup source for future snapshots
+  ansible.builtin.import_tasks: source_snapshot_access.yaml
+  when: diaries_snapshot_source_acl_enabled | bool
+  tags:
+    - diaries-snapshot-source-acl
+
+- name: Setup Btrfs snapshot support with optional verified-Diaries barrier
+  ansible.builtin.include_role:
+    name: snapshots
+    apply:
+      become: true
+  tags:
+    - snapshots
+  vars:
+    btrfs_snapshot_require_verified_diaries: "{{ diaries_snapshot_integration_enabled }}"
+    btrfs_snapshot_writer_lock_path: "{{ diaries_pull_repository_lock if (diaries_snapshot_integration_enabled | bool) else '' }}"
+    btrfs_snapshot_diaries_source_name: "{{ diaries_snapshot_source_name }}"
+    btrfs_snapshot_diaries_relative_path: "{{ diaries_snapshot_diaries_relative_path if (diaries_snapshot_integration_enabled | bool) else '' }}"
+    btrfs_snapshot_diaries_marker_relative_path: "{{ diaries_snapshot_marker_relative_path if (diaries_snapshot_integration_enabled | bool) else '' }}"
+
+- name: Install user scripts
+  ansible.builtin.import_tasks: install_user_scripts.yaml
+  tags:
+    - user
+
+- name: Install machine scripts
+  ansible.builtin.import_tasks: install_machine_scripts.yaml
+  become: true
+  tags:
+    - machine

@@ -1,0 +1,97 @@
+---
+# Gate E verification: controller-only; no roles, network tasks, or remote mutation.
+- name: Verify pluto fixed-capture contract locally using inventory
+  hosts: pluto
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Load Diaries role defaults as namespaced data (without executing the role)
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../roles/diaries/defaults/main.yaml"
+        name: gate_e_defaults
+      no_log: true
+
+    - name: Resolve only the fixed-capture and host mount selectors
+      ansible.builtin.set_fact:
+        diaries_fixed_capture_enabled: "{{ diaries_0036_fixed_capture_enabled | default(gate_e_defaults.diaries_0036_fixed_capture_enabled) }}"
+        diaries_host_nas_mount_enabled: "{{ diaries_0036_host_nas_mount_enabled | default(gate_e_defaults.diaries_0036_host_nas_mount_enabled) }}"
+        diaries_host_nas_mount_root: "{{ diaries_0036_host_nas_mount_root | default(gate_e_defaults.diaries_0036_host_nas_mount_root) }}"
+      no_log: true
+
+    - name: Check inventory resolved the expected protected selectors
+      ansible.builtin.assert:
+        that:
+          - diaries_fixed_capture_enabled | bool
+          - diaries_host_nas_mount_enabled | bool
+          - diaries_host_nas_mount_root == '/mnt/nas-diaries'
+          - (diaries_0036_fixed_capture_enabled | bool) == (diaries_fixed_capture_enabled | bool)
+        fail_msg: "FAIL: unexpected fixed-capture/host-mount inventory settings; DO NOT DEPLOY"
+        success_msg: "PASS: pluto fixed-capture and NAS mount selectors"
+
+    - name: Resolve projects root from the established service account
+      ansible.builtin.set_fact:
+        projects_dir: "/home/{{ ansible_user | default('richard') }}/projects"
+      no_log: true
+
+    - name: Resolve the remaining service-template inputs without loading unrelated host variables
+      ansible.builtin.set_fact:
+        diaries_project_dir: "{{ projects_dir }}/diaries"
+        diaries_complete_backup_timeout_start_sec: "{{ gate_e_defaults.diaries_complete_backup_timeout_start_sec }}"
+      no_log: true
+
+    - name: Assert the project path and service account are available
+      ansible.builtin.assert:
+        that:
+          - projects_dir is defined
+          - (ansible_user | default('richard')) == 'richard'
+          - diaries_project_dir == '/home/richard/projects/diaries'
+        fail_msg: "FAIL: missing or unexpected pluto service-template inputs; DO NOT DEPLOY"
+        success_msg: "PASS: pluto service path and account are defined"
+
+    - name: Render only the systemd service template on mango
+      ansible.builtin.set_fact:
+        gate_e_service: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../roles/diaries/templates/etc/systemd/system/diaries-complete-backup-publish.service.j2') }}"
+      no_log: true
+
+    - name: Assert the service cannot select legacy publication
+      ansible.builtin.assert:
+        that:
+          - "'backup-dataset.sh fixed-capture-preflight' in gate_e_service"
+          - "'backup-dataset.sh fixed-capture' in gate_e_service"
+          - "'backup-dataset.sh publish-preflight' not in gate_e_service"
+          - "'backup-dataset.sh publish\n' not in gate_e_service"
+        fail_msg: "FAIL: rendered pluto service differs from Gate D; DO NOT DEPLOY"
+        success_msg: "PASS: pluto service renders fixed capture, not legacy publish"
+
+    - name: Read runtime env template as uninterpreted text
+      ansible.builtin.set_fact:
+        gate_e_env_source: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/diaries/templates/.env.j2') }}"
+      no_log: true
+
+    - name: Assert 0036 runtime keys remain wired without rendering unrelated secrets
+      ansible.builtin.assert:
+        that:
+          - "gate_e_env_source | regex_search('(?m)^DIARIES_0036_FIXED_CAPTURE_ENABLED=') is not none"
+          - "gate_e_env_source | regex_search('(?m)^DIARIES_0036_HOST_MOUNT_ROOT=') is not none"
+          - "gate_e_env_source | regex_search('(?m)^DIARIES_0036_HOST_FILES_ROOT=') is not none"
+          - "gate_e_env_source | regex_search('(?m)^DIARIES_0036_HOST_FILES_IDENTITY=') is not none"
+          - "'diaries_fixed_capture_enabled | bool | lower' in gate_e_env_source"
+          - "'diaries_host_nas_mount_root' in gate_e_env_source"
+          - "'diaries_nas_content_path' in gate_e_env_source"
+          - "'diaries_files_dir' in gate_e_env_source"
+        fail_msg: "FAIL: fixed-capture environment template wiring changed; DO NOT DEPLOY"
+        success_msg: "PASS: expected fixed-capture runtime keys remain present"
+
+- name: Verify mars receiver selectors locally using inventory
+  hosts: mars
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Verify guarded pull and snapshot integration remain enabled
+      ansible.builtin.assert:
+        that:
+          - diaries_pull_install | bool
+          - diaries_pull_fixed_destination_enabled | bool
+          - diaries_snapshot_integration_enabled | bool
+        fail_msg: "FAIL: mars guarded receiver is not enabled; DO NOT DEPLOY"
+        success_msg: "PASS: mars guarded fixed receiver and snapshot integration"

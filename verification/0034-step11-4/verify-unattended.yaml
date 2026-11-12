@@ -1,0 +1,227 @@
+---
+# 0034 Step 11.4 — read-only live acceptance after explicit timer activation.
+# Run from mango with the normal inventory. This playbook does not start timers,
+# transfers, backups, snapshots or restores.
+
+- name: 0034 Step 11.4 | Verify pluto unattended production publication
+  hosts: pluto
+  gather_facts: false
+  vars:
+    step11_4_max_production_age_hours: 36
+  tasks:
+    - name: Step 11.4 | Verify publisher timer and last service result
+      ansible.builtin.shell: |
+        set -euo pipefail
+        test "$(systemctl is-enabled diaries-complete-backup-publish.timer)" = enabled
+        test "$(systemctl is-active diaries-complete-backup-publish.timer)" = active
+        test "$(systemctl show diaries-complete-backup-publish.service -p Result --value)" = success
+        test "$(systemctl show diaries-complete-backup-publish.service -p ExecMainStatus --value)" = 0
+        test -n "$(systemctl show diaries-complete-backup-publish.service -p ExecMainStartTimestamp --value)"
+        systemctl list-timers diaries-complete-backup-publish.timer --no-pager
+      args:
+        executable: /bin/bash
+      register: step11_4_pluto_timer
+      changed_when: false
+
+    - name: Step 11.4 | Verify current pluto publication and freshness
+      ansible.builtin.shell: |
+        set -euo pipefail
+        project="$HOME/projects/diaries"
+        published="$(sed -n 's/^DIARIES_COMPLETE_BACKUP_PUBLISHED_ROOT=//p' "$project/.env" | tail -1)"
+        test -n "$published"
+        target="$(readlink -f "$published")"
+        test -d "$target"
+        backup_id="$(basename "$target")"
+        python3 - "$backup_id" {{ step11_4_max_production_age_hours }} <<'PY'
+        from datetime import datetime, timezone
+        import sys
+        stamp = datetime.strptime(sys.argv[1], '%Y%m%d-%H%M%SZ').replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+        limit = float(sys.argv[2])
+        if age < 0 or age > limit:
+            raise SystemExit(f'publication age {age:.2f}h exceeds {limit:.2f}h')
+        print(f'PLUTO-PUBLICATION backupId={sys.argv[1]} ageHours={age:.2f}')
+        PY
+        python3 "$project/scripts/complete-dataset-manifest.py" verify --backup-dir "$target"
+      args:
+        executable: /bin/bash
+      register: step11_4_pluto_publication
+      changed_when: false
+
+    - name: Step 11.4 | Show pluto acceptance evidence
+      ansible.builtin.debug:
+        msg:
+          - "{{ step11_4_pluto_timer.stdout_lines }}"
+          - "{{ step11_4_pluto_publication.stdout_lines }}"
+
+- name: 0034 Step 11.4 | Verify mars collection, snapshot and off-site schedules
+  hosts: mars
+  gather_facts: false
+  vars:
+    step11_4_max_collection_age_hours: 36
+    step11_4_max_snapshot_age_hours: 2
+  tasks:
+    - name: Step 11.4 | Verify required mars timers are enabled and active
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for unit in \
+          diaries-pull.timer \
+          btrfs-snapshot-create.timer \
+          btrfs-snapshot-prune.timer \
+          btrfs-native-push.timer
+        do
+          test "$(systemctl is-enabled "$unit")" = enabled
+          test "$(systemctl is-active "$unit")" = active
+        done
+        systemctl list-timers \
+          diaries-pull.timer \
+          btrfs-snapshot-create.timer \
+          btrfs-snapshot-prune.timer \
+          btrfs-native-push.timer \
+          --no-pager
+      args:
+        executable: /bin/bash
+      register: step11_4_mars_timers
+      changed_when: false
+
+    - name: Step 11.4 | Verify last scheduled-service executions succeeded
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for unit in \
+          diaries-pull.service \
+          btrfs-snapshot-create.service \
+          btrfs-snapshot-prune.service \
+          btrfs-native-push.service
+        do
+          test "$(systemctl show "$unit" -p Result --value)" = success
+          test "$(systemctl show "$unit" -p ExecMainStatus --value)" = 0
+          test -n "$(systemctl show "$unit" -p ExecMainStartTimestamp --value)"
+          printf '%s result=%s status=%s started=%s\n' \
+            "$unit" \
+            "$(systemctl show "$unit" -p Result --value)" \
+            "$(systemctl show "$unit" -p ExecMainStatus --value)" \
+            "$(systemctl show "$unit" -p ExecMainStartTimestamp --value)"
+        done
+      args:
+        executable: /bin/bash
+      register: step11_4_mars_results
+      changed_when: false
+
+    - name: Step 11.4 | Prove historical rsync off-site phase is disabled
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if sudo -n grep -Eq '^[[:space:]]*\([[:space:]]*cd[[:space:]]+remote[[:space:]]*&&[[:space:]]*\./backup\.sh[[:space:]]*\)' /root/scripts/backup/backup.sh; then
+          echo 'legacy remote rsync phase is still active in /root/scripts/backup/backup.sh' >&2
+          exit 1
+        fi
+        echo 'LEGACY-RSYNC-OFFSITE=disabled'
+      args:
+        executable: /bin/bash
+      register: step11_4_mars_legacy
+      changed_when: false
+
+    - name: Step 11.4 | Verify current mars Diaries collection and freshness
+      ansible.builtin.shell: |
+        set -euo pipefail
+        current=/media/usb/@data/backup/pluto/diaries-backup
+        target="$(readlink -f "$current")"
+        test -d "$target"
+        backup_id="$(basename "$target")"
+        python3 - "$backup_id" {{ step11_4_max_collection_age_hours }} <<'PY'
+        from datetime import datetime, timezone
+        import sys
+        stamp = datetime.strptime(sys.argv[1], '%Y%m%d-%H%M%SZ').replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+        limit = float(sys.argv[2])
+        if age < 0 or age > limit:
+            raise SystemExit(f'mars Diaries collection age {age:.2f}h exceeds {limit:.2f}h')
+        print(f'MARS-COLLECTION backupId={sys.argv[1]} ageHours={age:.2f}')
+        PY
+        python3 "$HOME/scripts/backup/complete-dataset-manifest.py" verify --backup-dir "$target"
+      args:
+        executable: /bin/bash
+      register: step11_4_mars_collection
+      changed_when: false
+
+    - name: Step 11.4 | Verify recent native snapshot and non-mutating push preflight
+      ansible.builtin.shell: |
+        set -euo pipefail
+        listing="$(sudo -n /usr/local/libexec/btrfs-native-endpoint --role list-source)"
+        python3 - "$listing" {{ step11_4_max_snapshot_age_hours }} <<'PY'
+        from datetime import datetime, timezone
+        import json, sys
+        values = json.loads(sys.argv[1])
+        if not values:
+            raise SystemExit('no valid native source snapshots')
+        newest = max(values, key=lambda item: item['snapshot'])
+        stamp = datetime.strptime(newest['snapshot'], '%Y%m%d-%H%M%SZ').replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+        limit = float(sys.argv[2])
+        if age < 0 or age > limit:
+            raise SystemExit(f'latest native snapshot age {age:.2f}h exceeds {limit:.2f}h')
+        print(f"MARS-SNAPSHOT snapshot={newest['snapshot']} sourceUuid={newest['uuid']} ageHours={age:.2f}")
+        PY
+        /usr/local/bin/btrfs-native-push --latest --preflight
+      args:
+        executable: /bin/bash
+      register: step11_4_mars_native
+      changed_when: false
+
+    - name: Step 11.4 | Show mars acceptance evidence
+      ansible.builtin.debug:
+        msg:
+          - "{{ step11_4_mars_timers.stdout_lines }}"
+          - "{{ step11_4_mars_results.stdout_lines }}"
+          - "{{ step11_4_mars_legacy.stdout_lines }}"
+          - "{{ step11_4_mars_collection.stdout_lines }}"
+          - "{{ step11_4_mars_native.stdout_lines }}"
+
+- name: 0034 Step 11.4 | Verify backup receiver freshness and retired pull path
+  hosts: backup
+  gather_facts: false
+  vars:
+    step11_4_max_offsite_age_hours: 36
+  tasks:
+    - name: Step 11.4 | Confirm obsolete receiver-side pull helpers remain absent
+      ansible.builtin.shell: |
+        set -euo pipefail
+        test ! -e /usr/local/bin/btrfs-native-pull
+        test ! -e /usr/local/libexec/whole-backup-pull.py
+        echo 'OBSOLETE-PULL-HELPERS=absent'
+      args:
+        executable: /bin/bash
+      register: step11_4_backup_legacy
+      changed_when: false
+
+    - name: Step 11.4 | Verify recent accepted off-site receipt and immutable receiver snapshot
+      ansible.builtin.shell: |
+        set -euo pipefail
+        listing="$(/usr/local/bin/btrfs-native-push-receiver --list)"
+        newest="$(python3 - "$listing" {{ step11_4_max_offsite_age_hours }} <<'PY'
+        from datetime import datetime, timezone
+        import json, sys
+        values = json.loads(sys.argv[1])
+        if not values:
+            raise SystemExit('no accepted off-site receipts')
+        newest = max(values, key=lambda item: item['snapshot'])
+        stamp = datetime.strptime(newest['snapshot'], '%Y%m%d-%H%M%SZ').replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+        limit = float(sys.argv[2])
+        if age < 0 or age > limit:
+            raise SystemExit(f'latest accepted off-site snapshot age {age:.2f}h exceeds {limit:.2f}h')
+        print(newest['snapshot'])
+        print(f"BACKUP-RECEIPT snapshot={newest['snapshot']} sourceUuid={newest['source_uuid']} ageHours={age:.2f}", file=sys.stderr)
+        PY
+        )"
+        sudo -n /usr/local/libexec/btrfs-native-endpoint --role inspect-receiver --snapshot "$newest"
+      args:
+        executable: /bin/bash
+      register: step11_4_backup_receiver
+      changed_when: false
+
+    - name: Step 11.4 | Show backup acceptance evidence
+      ansible.builtin.debug:
+        msg:
+          - "{{ step11_4_backup_legacy.stdout_lines }}"
+          - "{{ step11_4_backup_receiver.stdout_lines }}"
+          - "{{ step11_4_backup_receiver.stderr_lines }}"

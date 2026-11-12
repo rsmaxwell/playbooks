@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "mode": "receiver",
+  "snapshot_directory": "/@data/mars-received/@data",
+  "receiver_state_dir": "/@data/mars-received/.replication-state",
+  "receiver_prune_enabled": false,
+  "retention": {{ btrfs_receiver_retention | to_json }}
+}

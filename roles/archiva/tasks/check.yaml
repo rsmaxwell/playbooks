@@ -1,0 +1,51 @@
+---
+
+- name: archiva:check | Check docker is installed
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+  failed_when: false
+
+- name: archiva:check | Fail if infrastructure is not installed
+  ansible.builtin.fail:
+    msg: >
+      The infrastructure stack does not appear to be installed.
+      Missing docker version '{{ archiva_shared_network_name }}'.
+      Deploy the infrastructure playbook before archiva.
+  when: docker_version.rc != 0
+
+
+
+
+
+- name: archiva:check | Check docker daemon is reachable
+  ansible.builtin.command: docker info
+  register: docker_info
+  changed_when: false
+  failed_when: false
+
+- name: archiva:check | Fail if infrastructure is not installed
+  ansible.builtin.fail:
+    msg: >
+      The infrastructure stack does not appear to be installed.
+      The docker daemon is not reachable
+      Deploy the infrastructure playbook before archiva.
+  when: docker_info.rc != 0
+
+
+
+
+
+- name: archiva:check | Check shared network exists
+  ansible.builtin.command: docker network inspect {{ archiva_shared_network_name }}
+  register: shared_network
+  changed_when: false
+  failed_when: false
+
+- name: archiva:check | Fail if infrastructure is not installed
+  ansible.builtin.fail:
+    msg: >
+      The infrastructure stack does not appear to be installed.
+      Missing docker network '{{ archiva_shared_network_name }}'.
+      Deploy the infrastructure playbook before archiva.
+  when: shared_network.rc != 0

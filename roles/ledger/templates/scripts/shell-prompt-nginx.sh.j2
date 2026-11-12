@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# ==============================================================================
+# shell-prompt-nginx.sh
+#
+# Open an interactive shell inside the Nginx container serving Ledger.
+#
+# In standalone frontend mode, Nginx belongs to the Ledger Compose stack.
+# In shared frontend mode, the application route is served by the common
+# infrastructure Nginx container instead, so this script opens that container.
+#
+# The script validates the relevant runtime/container state before opening the
+# shell and works in both frontend modes.
+# ==============================================================================
+
+PROJECT_DIR="{{ ledger_project_dir }}"
+COMPOSE_FILE="${PROJECT_DIR}/compose.yaml"
+ENV_FILE="${PROJECT_DIR}/.env"
+FRONTEND_MODE="{{ ledger_frontend_mode }}"
+STANDALONE_SERVICE="ledger-nginx"
+SHARED_NGINX_CONTAINER="{{ ledger_shared_frontend_nginx_container_name }}"
+
+
+# ------------------------------------------------------------------------------
+# Shared frontend mode: Nginx is owned by the infrastructure stack.
+# ------------------------------------------------------------------------------
+
+if [[ "${FRONTEND_MODE}" == "shared" ]]; then
+    if [[ "" != "true" ]]; then
+        echo "ERROR: Shared Nginx container is not running: ${SHARED_NGINX_CONTAINER}" >&2
+        exit 1
+    fi
+
+    echo "Opening shell in the shared Nginx container '${SHARED_NGINX_CONTAINER}' serving Ledger..."
+    echo 'Type "exit" to return to this host prompt.'
+    echo
+    exec docker exec -it "${SHARED_NGINX_CONTAINER}" sh
+fi
+
+
+# ------------------------------------------------------------------------------
+# Standalone frontend mode: validate the Ledger Compose runtime.
+# ------------------------------------------------------------------------------
+
+if [[ ! -d "${PROJECT_DIR}" ]]; then
+    echo "ERROR: Ledger project directory not found: ${PROJECT_DIR}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+    echo "ERROR: Compose file not found: ${COMPOSE_FILE}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+    echo "ERROR: Environment file not found: ${ENV_FILE}" >&2
+    exit 1
+fi
+
+cd "${PROJECT_DIR}"
+
+docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    config --quiet
+
+if ! docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    config --services | grep -Fxq "${STANDALONE_SERVICE}"; then
+    echo "ERROR: The ${STANDALONE_SERVICE} service is not present in this Ledger deployment." >&2
+    exit 1
+fi
+
+if ! docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    ps --status running --services | grep -Fxq "${STANDALONE_SERVICE}"; then
+    echo "ERROR: The ${STANDALONE_SERVICE} service is not running." >&2
+    echo "Start the Ledger stack before using this script." >&2
+    exit 1
+fi
+
+
+# ------------------------------------------------------------------------------
+# Open the standalone Nginx shell.
+# ------------------------------------------------------------------------------
+
+echo "Opening shell in the Ledger production Nginx container..."
+echo 'Type "exit" to return to this host prompt.'
+echo
+
+exec docker compose \
+    --file "${COMPOSE_FILE}" \
+    --env-file "${ENV_FILE}" \
+    exec "${STANDALONE_SERVICE}" sh

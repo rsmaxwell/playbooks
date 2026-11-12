@@ -1,0 +1,10 @@
+[Unit]
+Description=0039 Daily guarded stale Btrfs qgroup reconciliation
+
+[Timer]
+OnCalendar={{ btrfs_stale_qgroup_on_calendar }}
+Persistent=false
+Unit=btrfs-clear-stale-qgroups.service
+
+[Install]
+WantedBy=timers.target

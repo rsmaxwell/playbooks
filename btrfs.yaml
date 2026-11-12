@@ -1,0 +1,6 @@
+---
+- hosts: btrfs
+
+  roles:
+    - name: btrfs
+

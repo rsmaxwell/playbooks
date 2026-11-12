@@ -1,0 +1,13 @@
+---
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name:
+      - libxml2-utils
+      - jq
+      - tree
+      - zip
+      - unzip
+    state: present
+    update_cache: true
+  become: true

@@ -1,0 +1,17 @@
+---
+
+- name: archiva:handler | Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Restart systemd
+
+
+- name: archiva:handler | Enable and start archiva compose service
+  become: true
+  ansible.builtin.systemd:
+    name: archiva-compose
+    enabled: true
+    state: started
+  listen: Restart infrastructure stack
+

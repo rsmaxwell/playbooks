@@ -1,0 +1,64 @@
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+spec:
+  replicas: {{ .Values.replicas.jenkins }}
+  selector:
+    matchLabels:
+      app: {{ .Values.podLabels.jenkins }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.podLabels.jenkins }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      securityContext:
+            fsGroup: {{ .Values.podSecurityContext.fsGroup }}
+            runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+      containers:
+        - name: jenkins
+          image: {{ .Values.image.jenkins.name }}:{{ .Values.image.jenkins.tag }}
+          env:
+            - name: {{ .Values.image.jenkins.env.name }}
+              value: {{ .Values.image.jenkins.env.value }}
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+            requests:
+              memory: "500Mi"
+              cpu: "500m"
+          ports:
+            - name: httpport
+              containerPort: {{ .Values.ports.http.port }}
+            - name: jnlpport
+              containerPort: {{ .Values.ports.jnlp.port }}
+          livenessProbe:
+            httpGet:
+              path: "/login"
+              port: {{ .Values.ports.http.port }}
+            initialDelaySeconds: 180
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: "/login"
+              port: {{ .Values.ports.http.port }}
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+      volumes:
+        - name: jenkins-data
+          hostPath:
+          persistentVolumeClaim:
+              claimName: jenkins-pvc
+
+

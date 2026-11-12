@@ -1,0 +1,66 @@
+---
+# Simplified native replication is deployed by btrfs-replication.yaml.
+# No backup-initiated pull or rsync replica is installed by this role.
+
+# Production mars -> backup simplified replication remains
+# explicit opt-in. Ordinary deployment installs the service/timer but leaves
+# the timer disabled until the production scheduling gate is approved.
+btrfs_native_push_schedule_enabled: false
+btrfs_native_push_on_calendar: "*-*-* 03:30:00 UTC"
+btrfs_native_push_timeout_start_sec: 6h
+
+# 0040-FEAT: explicitly opt in to receiver-mode inventory/planning deployment.
+# Never enables receiver pruning, installs deletion timers, or touches snapshots.
+btrfs_native_receiver_manager_install_enabled: false
+
+# 0040-FEAT Step 12.3: one policy for both receiver-side consumers.
+# The shared policy counts occupied buckets. Production receiver pruning
+# is independently authorised through receiver-specific inventory variables;
+# do not change these policy values as part of timer/service housekeeping.
+btrfs_receiver_retention:
+  hourly: 48
+  daily: 14
+  weekly: 12
+  monthly: 24
+  yearly: 5
+  minimum_age_minutes: 30
+
+# 0040-FEAT: immutable minimum receiver checkpoint identities. Additional
+# operational holds in /etc/btrfs-receiver-checkpoint-holds.json are preserved.
+btrfs_native_receiver_checkpoint_holds:
+  20261013-171228Z:
+    reason: Historical recovery baseline
+    source_uuids:
+      '@data': 340674cc-d02c-244e-b7ec-e3ea5a6b151f
+  20261018-165453Z:
+    reason: Preserved evidence checkpoint
+    source_uuids:
+      '@data': 087c906a-0518-e34a-88f7-40a5b693c41a
+
+# 0040 simplified agreed-parent runtime. Defaults remain off; effective
+# inventory on mars opts in to the established 03:30 UTC sender schedule.
+btrfs_simplified_replication_install_enabled: false
+# Explicit source activation gate. The active service always calls the simplified
+# implementation, while preserving the original systemd unit names.
+btrfs_simplified_replication_active_enabled: false
+
+# 0040 Step 12: install the shared manager's receipt-independent receiver
+# retention functionality. Destructive execution and its timer remain opt-in
+# behind a separately accepted deletion gate.
+btrfs_simplified_receiver_retention_install_enabled: false
+btrfs_simplified_receiver_prune_enabled: false
+btrfs_simplified_receiver_prune_on_calendar: "*-*-* 04:15:00 UTC"
+btrfs_simplified_receiver_prune_max_delete: 10
+
+# 0039-DEF: one housekeeping executable for mars and backup. Merely installing
+# it never activates the scheduled cleanup. Both gates must be reviewed for
+# each host after the read-only Step 8 baseline and Step 9 source regression.
+btrfs_stale_qgroup_maintenance_install_enabled: false
+btrfs_stale_qgroup_maintenance_enabled: false
+btrfs_stale_qgroup_on_calendar: "*-*-* 05:30:00 UTC"
+btrfs_stale_qgroup_max_stale: 2000
+# The installed /etc/btrfs-stale-qgroups.json is rendered separately on
+# each endpoint; the executable and systemd service implementation are shared.
+btrfs_stale_qgroup_filesystem_path: "{{ '/media/usb' if btrfs_native_endpoint_role == 'source' else '/' }}"
+btrfs_stale_qgroup_manager_config_path: /etc/btrfs-snapshot-manager.json
+btrfs_stale_qgroup_writer_lock_path: "{{ '/media/usb/@data/backup/.btrfs-snapshot-writer.lock' if btrfs_native_endpoint_role == 'source' else '/@data/mars-received/.replication-state/writer.lock' }}"

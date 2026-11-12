@@ -1,0 +1,61 @@
+---
+# Read-only host inventory for 0034 Step 10 / 0035 integration.
+- name: Step 10 Btrfs and scheduler baseline
+  hosts: "{{ step10_host | default('mars') }}"
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Capture Btrfs mounts
+      ansible.builtin.command: findmnt -t btrfs
+      register: step10_findmnt
+      changed_when: false
+
+    - name: Capture Btrfs subvolumes
+      ansible.builtin.command: "btrfs subvolume list {{ '/media/usb' if inventory_hostname == 'mars' else '/' }}"
+      register: step10_subvolumes
+      changed_when: false
+
+    - name: Capture Snapper configurations
+      ansible.builtin.command: snapper list-configs
+      register: step10_snapper_configs
+      changed_when: false
+      failed_when: false
+
+    - name: Capture relevant timer units
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        systemctl list-timers --all --no-pager |
+        grep -E 'snapper|btrfs-snapshot' || true
+      args:
+        executable: /bin/bash
+      register: step10_timers
+      changed_when: false
+
+    - name: Capture timer enabled/active states
+      ansible.builtin.shell: |
+        for unit in snapper-timeline.timer snapper-boot.timer snapper-cleanup.timer btrfs-snapshot-create.timer btrfs-snapshot-prune.timer; do
+          printf '%s enabled=' "$unit"
+          systemctl is-enabled "$unit" 2>/dev/null || true
+          printf '%s active=' "$unit"
+          systemctl is-active "$unit" 2>/dev/null || true
+        done
+      args:
+        executable: /bin/bash
+      register: step10_timer_states
+      changed_when: false
+
+    - name: Capture root crontab
+      ansible.builtin.command: crontab -l
+      register: step10_root_cron
+      changed_when: false
+      failed_when: false
+
+    - name: Show Step 10 baseline
+      ansible.builtin.debug:
+        msg:
+          - "findmnt: {{ step10_findmnt.stdout_lines }}"
+          - "subvolumes: {{ step10_subvolumes.stdout_lines }}"
+          - "snapper: {{ step10_snapper_configs.stdout_lines | default([]) }}"
+          - "timers: {{ step10_timers.stdout_lines | default([]) }}"
+          - "timer states: {{ step10_timer_states.stdout_lines | default([]) }}"
+          - "root cron: {{ step10_root_cron.stdout_lines | default([]) }}"

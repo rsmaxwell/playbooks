@@ -1,0 +1,188 @@
+---
+
+- name: mosquitto:copy | Create project directories
+  become: yes
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ projects_dir }}", mode: "0755", owner: "richard", group: "richard" }
+    - { path: "{{ mosquitto_project_dir }}", mode: "0755", owner: "richard", group: "richard" }
+    - { path: "{{ mosquitto_project_dir }}/scripts", mode: "0755", owner: "richard", group: "richard" }
+    - { path: "{{ mosquitto_project_dir }}/config", mode: "0755", owner: "richard", group: "richard" }
+    - { path: "{{ mosquitto_project_dir }}/data", mode: "0755", owner: "1883", group: "1883" }
+    - { path: "{{ mosquitto_project_dir }}/log", mode: "0755", owner: "1883", group: "1883" }
+
+- name: mosquitto:copy | Synchronize files
+  ansible.posix.synchronize:
+    src: "sync/"
+    dest: "{{ mosquitto_project_dir }}/"
+    rsync_opts:
+      - "--omit-dir-times"
+  register: result
+
+- name: mosquitto:copy | Debug sync output
+  ansible.builtin.debug:
+    var: result.stdout_lines
+
+
+
+- name: mosquitto:copy | Copy files owned by the container
+  become: yes
+  ansible.builtin.copy:
+    src: "misc/{{ item.path }}"
+    dest: "{{ mosquitto_project_dir }}/{{ item.path }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "config/aclfile.txt", owner: "1883", group: "1883", mode: "0600" }
+
+
+
+
+- name: mosquitto:copy | Copy locations file to nginx config.d
+  ansible.builtin.copy:
+    src: "misc/{{ item.path }}"
+    dest: "{{ infrastructure_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "nginx/config/files/mosquitto.conf", mode: '0664' }
+
+
+
+
+- name: mosquitto:copy | Template files
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "{{ mosquitto_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "compose.yaml", mode: '0664' }
+    - { path: ".env", mode: '0644' }
+    - { path: "config/mosquitto.conf", mode: '0644' }
+    - { path: "scripts/start.sh", mode: '0744' }
+    - { path: "scripts/stop.sh", mode: '0744' }
+
+
+
+
+- name: mosquitto:copy | Install the Mosquitto systemd unit
+  become: true
+  ansible.builtin.template:
+    src: "compose/mosquitto-compose.service.j2"
+    dest: "/etc/systemd/system/mosquitto-compose.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart systemd
+    - Restart infrastructure stack
+
+
+- name: mosquitto:copy | Get password source checksum on controller
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ role_path }}/files/misc/source/pwfile.source.txt"
+    checksum_algorithm: sha256
+  register: mosquitto_pw_source_stat
+  no_log: true
+
+- name: mosquitto:copy | Check installed password file
+  become: yes
+  ansible.builtin.stat:
+    path: "{{ mosquitto_project_dir }}/config/pwfile.txt"
+  register: mosquitto_pwfile_stat
+  no_log: true
+
+- name: mosquitto:copy | Check installed password checksum marker
+  become: yes
+  ansible.builtin.stat:
+    path: "{{ mosquitto_project_dir }}/config/pwfile.source.sha256"
+  register: mosquitto_pw_marker_stat
+  no_log: true
+
+- name: mosquitto:copy | Read installed password checksum marker
+  become: yes
+  ansible.builtin.slurp:
+    path: "{{ mosquitto_project_dir }}/config/pwfile.source.sha256"
+  register: mosquitto_pw_marker
+  when: mosquitto_pw_marker_stat.stat.exists
+  no_log: true
+
+- name: mosquitto:copy | Decide whether password file must be regenerated
+  ansible.builtin.set_fact:
+    mosquitto_regenerate_pwfile: >-
+      {{
+        (not mosquitto_pwfile_stat.stat.exists)
+        or
+        (not mosquitto_pw_marker_stat.stat.exists)
+        or
+        ((mosquitto_pw_marker.content | b64decode | trim) != mosquitto_pw_source_stat.stat.checksum)
+      }}
+  no_log: true
+
+- name: mosquitto:copy | Create temporary password source file on target
+  ansible.builtin.tempfile:
+    state: file
+    suffix: .pwfile.source
+  register: mosquitto_pw_tmp
+  become: yes
+  when: mosquitto_regenerate_pwfile
+  no_log: true
+
+- name: mosquitto:copy | Copy plaintext password source from controller to target temp file
+  ansible.builtin.copy:
+    src: "misc/source/pwfile.source.txt"
+    dest: "{{ mosquitto_pw_tmp.path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: yes
+  when: mosquitto_regenerate_pwfile
+  no_log: true
+
+- name: mosquitto:copy | Hash password file in place
+  ansible.builtin.command:
+    cmd: "mosquitto_passwd -U {{ mosquitto_pw_tmp.path }}"
+  become: yes
+  when: mosquitto_regenerate_pwfile
+  no_log: true
+
+- name: mosquitto:copy | Install hashed Mosquitto password file
+  ansible.builtin.copy:
+    remote_src: true
+    src: "{{ mosquitto_pw_tmp.path }}"
+    dest: "{{ mosquitto_project_dir }}/config/pwfile.txt"
+    owner: "1883"
+    group: "1883"
+    mode: "0600"
+  become: yes
+  when: mosquitto_regenerate_pwfile
+  no_log: true
+
+- name: mosquitto:copy | Write password source checksum marker
+  ansible.builtin.copy:
+    content: "{{ mosquitto_pw_source_stat.stat.checksum }}\n"
+    dest: "{{ mosquitto_project_dir }}/config/pwfile.source.sha256"
+    owner: "1883"
+    group: "1883"
+    mode: "0600"
+  become: yes
+  when: mosquitto_regenerate_pwfile
+  no_log: true
+
+- name: mosquitto:copy | Remove temporary plaintext/hash work file
+  ansible.builtin.file:
+    path: "{{ mosquitto_pw_tmp.path }}"
+    state: absent
+  become: yes
+  when:
+    - mosquitto_regenerate_pwfile
+    - mosquitto_pw_tmp is defined
+    - mosquitto_pw_tmp.path is defined
+  no_log: true

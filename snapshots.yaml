@@ -1,0 +1,13 @@
+---
+# Use the established host-specific wrapper roles rather than invoking the
+# shared snapshots role directly. The backup-collection role
+# carries the verified-Diaries writer-lock and marker settings. This preserves the verified-Diaries writer
+# lock and marker requirements on mars and receiver policy on backup.
+# The snapshots.sh launcher selects only the snapshots tag.
+- hosts: local_backup
+  roles:
+    - role: backup-collection
+
+- hosts: remote_backup
+  roles:
+    - role: btrfs-replication

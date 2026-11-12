@@ -1,0 +1,17 @@
+{
+  "mode": "receiver",
+  "snapshot_root": "/@data/mars-received",
+  "lock_path": "/run/lock/btrfs-snapshot-manager.lock",
+  "writer_lock_path": "/@data/mars-received/.replication-state/writer.lock",
+  "receiver_state_dir": "/@data/mars-received/.replication-state",
+  "receiver_prune_enabled": {{ btrfs_simplified_receiver_prune_enabled | default(false) | to_json }},
+  "checkpoint_holds": {
+    "required": true,
+    "path": "/etc/btrfs-receiver-checkpoint-holds.json"
+  },
+  "sources": [
+    {"name": "@data", "snapshot_directory": "/@data/mars-received/@data"}
+  ],
+  "verification": {"required": false},
+  "retention": {{ btrfs_receiver_retention | to_json }}
+}

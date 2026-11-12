@@ -1,0 +1,39 @@
+{
+  "snapshot_root": {{ btrfs_snapshot_root_effective | to_json }},
+  "lock_path": {{ btrfs_snapshot_manager_lock_path | to_json }},
+  "writer_lock_path": {{ btrfs_snapshot_writer_lock_path | to_json }},
+  "sources": [
+{% for source in btrfs_snapshot_sources %}
+    {
+      "name": {{ source.name | to_json }},
+      "path": {{ source.path | to_json }},
+      "required": {{ source.required | default(true) | to_json }},
+      "creation": {{ source.creation | default(true) | to_json }},
+      "prune": {{ source.prune | default(true) | to_json }}
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+  ],
+  "verification": {
+    "required": {{ btrfs_snapshot_require_verified_diaries | bool | to_json }},
+    "source_name": {{ btrfs_snapshot_diaries_source_name | to_json }},
+    "dataset_relative_path": {{ btrfs_snapshot_diaries_relative_path | to_json }},
+    "marker_relative_path": {{ btrfs_snapshot_diaries_marker_relative_path | to_json }},
+    "manifest_tool": {{ btrfs_snapshot_manifest_tool_path | to_json }}
+  },
+  "replication_protection": {
+    "required": {{ (inventory_hostname == "mars") | bool | to_json }},
+    "path": {{ (btrfs_snapshot_root_effective ~ "/.replication-protection.json") | to_json }}
+  },
+  "checkpoint_holds": {
+    "required": {{ (inventory_hostname == "mars") | bool | to_json }},
+    "path": {{ (btrfs_snapshot_root_effective ~ "/.checkpoint-holds.json") | to_json }}
+  },
+  "retention": {
+    "hourly": {{ btrfs_snapshot_retention_hourly }},
+    "daily": {{ btrfs_snapshot_retention_daily }},
+    "weekly": {{ btrfs_snapshot_retention_weekly }},
+    "monthly": {{ btrfs_snapshot_retention_monthly }},
+    "yearly": {{ btrfs_snapshot_retention_yearly }},
+    "minimum_age_minutes": {{ btrfs_snapshot_minimum_age_minutes }}
+  }
+}

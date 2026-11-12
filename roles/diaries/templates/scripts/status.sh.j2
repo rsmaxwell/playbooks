@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Show the status of the installed Diaries production stack and, when using
+# the shared frontend, the active route and infrastructure Nginx container.
+
+PROJECT_DIR="{{ diaries_project_dir }}"
+COMPOSE_FILE="${PROJECT_DIR}/compose.yaml"
+ENV_FILE="${PROJECT_DIR}/.env"
+FRONTEND_MODE="{{ diaries_frontend_mode }}"
+SHARED_SOURCE_FILE="{{ diaries_shared_frontend_file }}"
+SHARED_LOCATION_FILE="{{ diaries_shared_frontend_location_file }}"
+
+for file in "${COMPOSE_FILE}" "${ENV_FILE}"; do
+    if [[ ! -f "${file}" ]]; then
+        echo "ERROR: Required Diaries runtime file not found: ${file}" >&2
+        exit 1
+    fi
+done
+
+cd "${PROJECT_DIR}"
+
+if ! docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" config --quiet; then
+    echo "ERROR: Diaries Docker Compose configuration is invalid." >&2
+    exit 1
+fi
+
+echo "Diaries stack status"
+echo "Project directory: ${PROJECT_DIR}"
+echo "Compose file:     ${COMPOSE_FILE}"
+echo "Environment file: ${ENV_FILE}"
+echo "Frontend mode:    ${FRONTEND_MODE}"
+echo
+
+docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" ps --all
+
+if [[ "${FRONTEND_MODE}" == "shared" ]]; then
+    echo
+    echo "Shared frontend"
+    echo "Network:          {{ diaries_shared_network_name }}"
+    echo "Nginx container:  {{ diaries_shared_frontend_nginx_container_name }}"
+    echo "Route source:     ${SHARED_SOURCE_FILE}"
+    echo "Route location:   ${SHARED_LOCATION_FILE}"
+
+    if [[ -L "${SHARED_LOCATION_FILE}" ]]; then
+        echo "Route active:     yes -> $(readlink "${SHARED_LOCATION_FILE}")"
+    else
+        echo "Route active:     no"
+    fi
+
+    docker ps \
+        --filter "name=^/{{ diaries_shared_frontend_nginx_container_name }}$" \
+        --format 'table {% raw %}{{.Names}}\t{{.Status}}\t{{.Ports}}{% endraw %}'
+fi

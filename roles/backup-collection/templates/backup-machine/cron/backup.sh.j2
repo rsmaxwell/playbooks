@@ -1,0 +1,24 @@
+#!/bin/bash
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir" || exit 1
+
+location="/media/usb/@data/backup/mars"
+
+dest="${location}/cron/root"
+
+if [ -f ${dest}/crontab.txt ]; then
+    tempprefix=$(basename "$0")
+    TMPFILE=$(mktemp /tmp/${tempprefix}.XXXXXX)
+    crontab -l >${TMPFILE}
+    if ! cmp -s ${TMPFILE} ${dest}/crontab.txt; then
+        cp ${TMPFILE} ${dest}/crontab.txt
+        chown --recursive {{ ansible_user }}:{{ ansible_user }} ${dest}
+    fi
+    rm /tmp/${tempprefix}.*
+else
+    su {{ ansible_user }} --command "mkdir --parents ${dest}"
+    crontab -l >${dest}/crontab.txt
+    chown --recursive {{ ansible_user }}:{{ ansible_user }} ${dest}
+fi
+

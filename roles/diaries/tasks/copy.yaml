@@ -1,0 +1,206 @@
+---
+
+
+- name: diaries:copy | Create project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ projects_dir }}"
+    - "{{ diaries_project_dir }}"
+    - "{{ diaries_project_dir }}/config"
+    - "{{ diaries_project_dir }}/config/client"
+    - "{{ diaries_project_dir }}/config/responder"
+    - "{{ diaries_project_dir }}/config/nginx"
+    - "{{ diaries_project_dir }}/config/nginx/config"
+    - "{{ diaries_project_dir }}/config/nginx/config/conf.d"
+    - "{{ diaries_project_dir }}/config/nginx/config/conf.d/locations"
+    - "{{ diaries_project_dir }}/config/nginx/config/files"
+    - "{{ diaries_project_dir }}/config/nginx/html"
+    - "{{ diaries_project_dir }}/config/nginx/html/files"
+    - "{{ diaries_project_dir }}/config/nginx/log"
+    - "{{ diaries_project_dir }}/config/mosquitto"
+    - "{{ diaries_project_dir }}/config/postgres"
+    - "{{ diaries_project_dir }}/config/web"
+    - "{{ diaries_project_dir }}/data"
+    - "{{ diaries_project_dir }}/data/postgres"
+    - "{{ diaries_project_dir }}/data/mosquitto"
+    - "{{ diaries_project_dir }}/data/responder"
+    - "{{ diaries_project_dir }}/data/nginx"
+    - "{{ diaries_project_dir }}/data/nginx/files"
+    - "{{ diaries_project_dir }}/data/diaries"
+    - "{{ diaries_project_dir }}/data/files"
+    - "{{ diaries_project_dir }}/data/dataset-backups"
+    - "{{ diaries_complete_backup_repository_root }}"
+    - "{{ diaries_project_dir }}/data/dataset-restores"
+    - "{{ diaries_complete_restore_state_root }}"
+    - "{{ diaries_project_dir }}/scripts"
+
+- name: diaries:copy | Synchronize project files excluding managed scripts
+  ansible.posix.synchronize:
+    src: "sync/"
+    dest: "{{ diaries_project_dir }}/"
+    rsync_opts:
+      - "--omit-dir-times"
+      - "--exclude=/scripts/"
+  register: result
+  notify: Restart diaries stack
+
+- name: diaries:copy | Debug project sync output
+  ansible.builtin.debug:
+    var: result.stdout_lines
+
+
+- name: diaries:copy | Synchronize managed scripts
+  ansible.posix.synchronize:
+    src: "sync/scripts/"
+    dest: "{{ diaries_project_dir }}/scripts/"
+    rsync_opts:
+      - "--omit-dir-times"
+      - "--delete"
+      - "--delete-excluded"
+      # Python verification/tests can create local interpreter caches under
+      # the role source. They are never production operator tooling. Exclude
+      # them permanently; --delete-excluded also removes any stale deployed
+      # copies if one ever reached the target.
+      - "--exclude=__pycache__/"
+      - "--exclude=*.pyc"
+      # These files are rendered by the template task below. Protect their
+      # deployed copies from this static-source sync while deleting every
+      # other unmanaged entry from the production scripts directory.
+      - "--filter=protect_/start.sh"
+      - "--filter=protect_/stop.sh"
+      - "--filter=protect_/status.sh"
+      - "--filter=protect_/logs.sh"
+      - "--filter=protect_/shell-prompt-database.sh"
+      - "--filter=protect_/shell-prompt-mosquitto.sh"
+      - "--filter=protect_/shell-prompt-responder.sh"
+      - "--filter=protect_/shell-prompt-client.sh"
+      - "--filter=protect_/shell-prompt-nginx.sh"
+  register: scripts_sync_result
+  notify: Restart diaries stack
+
+- name: diaries:copy | Debug managed scripts sync output
+  ansible.builtin.debug:
+    var: scripts_sync_result.stdout_lines
+
+
+- name: diaries:copy | Template files
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "{{ diaries_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "compose.yaml", mode: '0664' }
+    - { path: ".env", mode: '0600' }
+    - { path: "config/client/config.json", mode: '0644' }
+    - { path: "config/responder/responder.json", mode: '0644' }
+    - { path: "config/nginx/config/conf.d/site.conf", mode: "0644" }
+    - { path: "config/nginx/html/files/index.html", mode: "0644" }
+    - { path: "config/web/diaries-web.json", mode: '0644' }
+    - { path: "scripts/start.sh", mode: '0744' }
+    - { path: "scripts/stop.sh", mode: '0744' }
+    - { path: "scripts/status.sh", mode: '0744' }
+    - { path: "scripts/logs.sh", mode: '0744' }
+    - { path: "scripts/shell-prompt-database.sh", mode: '0744' }
+    - { path: "scripts/shell-prompt-mosquitto.sh", mode: '0744' }
+    - { path: "scripts/shell-prompt-responder.sh", mode: '0744' }
+    - { path: "scripts/shell-prompt-client.sh", mode: '0744' }
+    - { path: "scripts/shell-prompt-nginx.sh", mode: '0744' }
+  notify: Restart diaries stack
+
+
+- name: diaries:copy | Validate rendered ImageFragment authoring gate
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --fixed-strings
+      - --quiet
+      - '"imageFragmentWritesEnabled": {{ diaries_image_fragment_writes_enabled | bool | lower }}'
+      - "{{ diaries_project_dir }}/config/responder/responder.json"
+  changed_when: false
+
+
+- name: diaries:copy | Validate rendered mutable Files selector in .env
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --fixed-strings
+      - --line-regexp
+      - "DIARIES_FILES_DIR={{ diaries_files_dir }}"
+      - "{{ diaries_project_dir }}/.env"
+  changed_when: false
+
+- name: diaries:copy | Validate rendered complete-dataset storage contract in .env
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --fixed-strings
+      - --line-regexp
+      - "{{ item }}"
+      - "{{ diaries_project_dir }}/.env"
+  loop:
+    - "DIARIES_COMPLETE_BACKUP_REPOSITORY_ROOT={{ diaries_complete_backup_repository_root }}"
+    - "DIARIES_COMPLETE_RESTORE_STATE_ROOT={{ diaries_complete_restore_state_root }}"
+    - "DIARIES_COMPLETE_BACKUP_PUBLISHED_ROOT={{ diaries_complete_backup_published_root }}"
+    - "DIARIES_COMPLETE_BACKUP_STORAGE_MODE={{ diaries_complete_backup_storage_mode }}"
+  changed_when: false
+
+- name: diaries:copy | Validate rendered mutable Files mount in Compose
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --fixed-strings
+      - --quiet
+      - 'subpath: ${DIARIES_NAS_CONTENT_PATH}/${DIARIES_FILES_DIR}'
+      - "{{ diaries_project_dir }}/compose.yaml"
+  changed_when: false
+
+
+- name: diaries:copy | Validate rendered shared diary scan mount in Compose
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --fixed-strings
+      - --quiet
+      - 'subpath: ${DIARIES_NAS_CONTENT_PATH}/diaries'
+      - "{{ diaries_project_dir }}/compose.yaml"
+  changed_when: false
+
+
+- name: diaries:copy | Validate retained-snapshot broker flow-control policy
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --extended-regexp
+      - --line-regexp
+      - "{{ item }}"
+      - "{{ diaries_project_dir }}/config/mosquitto/mosquitto.conf"
+  loop:
+    - 'max_inflight_messages[[:space:]]+20[[:space:]]*'
+    - 'max_queued_messages[[:space:]]+0[[:space:]]*'
+  changed_when: false
+
+
+
+- name: diaries:copy | Install the systemd unit
+  become: true
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "/{{ item.path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { path: "etc/systemd/system/diaries-compose.service", mode: '0644' }
+  notify:
+    - Reload systemd
+    - Restart diaries stack
+
+
+
+
+
+
+
+

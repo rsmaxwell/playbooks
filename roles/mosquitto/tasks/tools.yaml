@@ -1,0 +1,11 @@
+---
+
+
+- name: mosquitto:tools | Install Mosquitto tools
+  become: yes
+  ansible.builtin.apt:
+    name:
+      - mosquitto
+      - mosquitto-clients
+    state: present
+    update_cache: yes

@@ -1,0 +1,32 @@
+---
+
+
+- name: infrastructure:nginx | Create project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "~/projects"
+    - "{{ infrastructure_project_dir }}"
+    - "{{ infrastructure_project_dir }}/nginx"
+    - "{{ infrastructure_project_dir }}/nginx/html"
+    - "{{ infrastructure_project_dir }}/nginx/html/files"
+    - "{{ infrastructure_project_dir }}/nginx/log"
+    - "{{ infrastructure_project_dir }}/nginx/config"
+    - "{{ infrastructure_project_dir }}/nginx/config/conf.d"
+
+
+- name: infrastructure:nginx | Template files
+  ansible.builtin.template:
+    src: "{{ item.src }}/{{ item.name }}.j2"
+    dest: "{{ item.dest }}/{{ item.name }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { 
+        src: nginx/html/files,
+        name: index.html,
+        dest: "{{ infrastructure_project_dir }}/nginx/html/files",
+        mode: '0644'
+      }
+
+

@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule source-initiated native Btrfs off-site replication
+
+[Timer]
+OnCalendar={{ btrfs_native_push_on_calendar }}
+Persistent=false
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

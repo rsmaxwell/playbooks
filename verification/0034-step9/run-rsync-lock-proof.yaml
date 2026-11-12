@@ -1,0 +1,46 @@
+---
+# This playbook MUTATES the stable publication by publishing the supplied second
+# completed legacy backup after proving the current generation is pinned for the
+# duration of a real rsync. It requires explicit opt-in.
+- name: 0034 Step 9 live rsync/publication lock proof
+  hosts: pluto
+  gather_facts: false
+  vars:
+    step9_run: false
+    step9_candidate_id: ""
+    step9_project_dir: /home/richard/projects/diaries
+    step9_repository_root: /home/richard/projects/diaries/data/dataset-backups/production
+    step9_published_root: /home/richard/projects/diaries/data/diaries-backup
+    step9_scratch_parent: /home/richard/projects/diaries/data
+  tasks:
+    - name: Require explicit live-proof opt-in and backup ID
+      ansible.builtin.assert:
+        that:
+          - step9_run is boolean
+          - step9_run | bool
+          - step9_candidate_id is match('^[0-9]{8}-[0-9]{6}Z$')
+        fail_msg: >-
+          This is a mutating acceptance test. Re-run only after the second plain
+          complete backup exists, with -e step9_run=true -e step9_candidate_id=<ID>.
+
+    - name: Prove actual flock and rsync commands are available
+      ansible.builtin.shell: |
+        set -e
+        command -v flock
+        command -v rsync
+      changed_when: false
+
+    - name: Run live rsync/publication contention proof
+      ansible.builtin.script: >-
+        {{ playbook_dir }}/verify-pluto-rsync-lock.py
+        --published-root {{ step9_published_root | quote }}
+        --candidate {{ (step9_repository_root ~ '/' ~ step9_candidate_id) | quote }}
+        --publisher {{ (step9_project_dir ~ '/scripts/complete-dataset-publisher.py') | quote }}
+        --manifest-tool {{ (step9_project_dir ~ '/scripts/complete-dataset-manifest.py') | quote }}
+        --scratch-parent {{ step9_scratch_parent | quote }}
+      register: step9_lock_proof
+      changed_when: true
+
+    - name: Report live proof output
+      ansible.builtin.debug:
+        var: step9_lock_proof.stdout_lines

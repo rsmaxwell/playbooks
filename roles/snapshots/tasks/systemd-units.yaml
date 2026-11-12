@@ -1,0 +1,23 @@
+---
+# 0045-FEAT phase: Render systemd units and reload before preflight.
+- name: snapshots | Install systemd units without activating them
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - btrfs-snapshot-create.service
+    - btrfs-snapshot-create.timer
+    - btrfs-snapshot-prune.service
+    - btrfs-snapshot-prune.timer
+  notify: Reload systemd for Btrfs snapshot manager
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Flush systemd unit changes before preflight
+  ansible.builtin.meta: flush_handlers
+  tags:
+    - snapshots

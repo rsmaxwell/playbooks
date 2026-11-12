@@ -1,0 +1,31 @@
+---
+
+
+
+- name: development:compose | Increase the maximum receive and send buffer sizes
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: '2500000'
+    state: present
+  become: yes
+  loop:
+    - net.core.rmem_max
+    - net.core.wmem_max
+
+
+
+- name: development:compose | Ensure shared Docker network exists
+  community.docker.docker_network:
+    name: "{{ shared_network_name }}"
+    driver: bridge
+    state: present
+
+
+
+- name: development:compose | Start and enable the service
+  ansible.builtin.systemd:
+    name: development-compose
+    enabled: yes
+    state: started 
+  become: yes
+  

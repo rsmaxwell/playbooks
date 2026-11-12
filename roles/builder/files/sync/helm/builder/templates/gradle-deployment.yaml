@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gradle
+  namespace: jenkins
+spec:
+  replicas: {{ .Values.replicas.gradle }}
+  selector:
+    matchLabels:
+      app: {{ .Values.podLabels.gradle }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.podLabels.gradle }}
+    spec:
+      containers:
+        - name:  {{ .Values.container.gradle }}
+          image: {{ .Values.image.gradle.name }}:{{ .Values.image.gradle.tag }}
+          command: ["bash", "-xc"]
+          args:
+            - tail -f /dev/null
+          volumeMounts:
+            - name: gradle-home
+              mountPath: /home/gradle
+      volumes:
+        - name: gradle-home
+          hostPath:
+          persistentVolumeClaim:
+              claimName: gradle-pvc

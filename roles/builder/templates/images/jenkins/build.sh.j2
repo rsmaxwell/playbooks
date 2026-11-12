@@ -1,0 +1,9 @@
+#!/bin/bash
+
+docker build --tag rsmaxwell/jenkins:{{ builder_jenkins_version }} .
+
+docker login
+
+docker push rsmaxwell/jenkins:{{ builder_jenkins_version }}
+
+docker logout

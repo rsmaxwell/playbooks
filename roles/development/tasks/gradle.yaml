@@ -1,0 +1,33 @@
+---
+
+
+- name: make the gradle directory
+  ansible.builtin.file:
+    path: /usr/local/gradle
+    state: directory
+  become: yes
+
+
+- name: download sources
+  get_url: 
+    url: "https://services.gradle.org/distributions/gradle-{{ gradle_version }}-bin.zip"
+    dest: "/tmp/"
+  register: result
+
+
+- name: unzip the downloaded file
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/unzip
+      - "-o"
+      - "{{ result.dest }}"
+    chdir: /usr/local/gradle
+  become: yes
+
+
+- name: make a symbolic link to the gradle executable
+  ansible.builtin.file:
+    src: /usr/local/gradle/gradle-{{ gradle_version }}/bin/gradle
+    dest: /usr/bin/gradle
+    state: link
+  become: yes

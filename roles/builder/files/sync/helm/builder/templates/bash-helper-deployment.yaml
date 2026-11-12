@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bash-helper
+  namespace: jenkins
+spec:
+  replicas: {{ .Values.replicas.bash }}
+  selector:
+    matchLabels:
+      app: {{ .Values.podLabels.bash }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.podLabels.bash }}
+    spec:
+      containers:
+        - name:  {{ .Values.container.bash }}
+          image: {{ .Values.image.bash.name }}:{{ .Values.image.bash.tag }}
+          command: ["bash", "-xc"]
+          args:
+          - |
+            chown -R 1000:1000 /var/jenkins_home
+            tail -f /dev/null
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+      volumes:
+        - name: jenkins-data
+          hostPath:
+          persistentVolumeClaim:
+              claimName: jenkins-pvc

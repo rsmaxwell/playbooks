@@ -1,0 +1,8 @@
+{{ {
+  'schema': 1,
+  'mode': btrfs_native_endpoint_role,
+  'filesystem': btrfs_stale_qgroup_filesystem_path,
+  'snapshot_manager_config': btrfs_stale_qgroup_manager_config_path,
+  'expected_writer_lock': btrfs_stale_qgroup_writer_lock_path,
+  'max_stale': btrfs_stale_qgroup_max_stale
+} | to_nice_json }}

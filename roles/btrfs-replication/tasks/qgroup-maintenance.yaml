@@ -1,0 +1,77 @@
+---
+# 0039-DEF: this is endpoint-neutral deployment; NEVER include the generic
+# snapshots role on the receiver (its guard correctly refuses remote_backup).
+- name: Qgroups | Validate explicit endpoint and activation contract
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname in ['mars', 'backup']
+      - btrfs_native_endpoint_role == ('source' if inventory_hostname == 'mars' else 'receiver')
+      - btrfs_stale_qgroup_maintenance_install_enabled is boolean
+      - btrfs_stale_qgroup_maintenance_enabled is boolean
+      - not btrfs_stale_qgroup_maintenance_enabled or btrfs_stale_qgroup_maintenance_install_enabled
+      - btrfs_stale_qgroup_max_stale is integer
+      - btrfs_stale_qgroup_max_stale >= 1
+      - btrfs_stale_qgroup_max_stale <= 2000
+      - btrfs_stale_qgroup_on_calendar is string
+      - (btrfs_stale_qgroup_on_calendar | length) > 0
+      - btrfs_stale_qgroup_filesystem_path == ('/media/usb' if btrfs_native_endpoint_role == 'source' else '/')
+      - btrfs_stale_qgroup_manager_config_path == '/etc/btrfs-snapshot-manager.json'
+      - btrfs_stale_qgroup_writer_lock_path == ('/media/usb/@data/backup/.btrfs-snapshot-writer.lock' if btrfs_native_endpoint_role == 'source' else '/@data/mars-received/.replication-state/writer.lock')
+    fail_msg: 'Invalid 0039 stale-qgroup activation configuration'
+  tags: [qgroup-maintenance]
+
+- name: Qgroups | Install one shared cleanup executable on both endpoints
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/snapshots/files/btrfs-clear-stale-qgroups.py'
+    dest: /usr/local/sbin/btrfs-clear-stale-qgroups
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when: btrfs_stale_qgroup_maintenance_install_enabled | bool
+  tags: [qgroup-maintenance]
+
+- name: Qgroups | Render host-local stale-qgroup maintenance configuration
+  ansible.builtin.template:
+    src: '{{ playbook_dir }}/roles/snapshots/templates/btrfs-stale-qgroups.json.j2'
+    dest: /etc/btrfs-stale-qgroups.json
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  when: btrfs_stale_qgroup_maintenance_install_enabled | bool
+  tags: [qgroup-maintenance]
+
+- name: Qgroups | Install endpoint-specific service and common timer
+  ansible.builtin.template:
+    src: '{{ playbook_dir }}/roles/snapshots/templates/{{ item }}.j2'
+    dest: '/etc/systemd/system/{{ item }}'
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - btrfs-clear-stale-qgroups.service
+    - btrfs-clear-stale-qgroups.timer
+  become: true
+  when: btrfs_stale_qgroup_maintenance_install_enabled | bool
+  tags: [qgroup-maintenance]
+
+- name: Qgroups | Read current installed timer state for safe check mode
+  ansible.builtin.stat:
+    path: /etc/systemd/system/btrfs-clear-stale-qgroups.timer
+  register: btrfs_stale_qgroup_timer_stat
+  become: true
+  when: btrfs_stale_qgroup_maintenance_install_enabled | bool
+  tags: [qgroup-maintenance]
+
+- name: Qgroups | Apply explicit timer activation state
+  ansible.builtin.systemd:
+    name: btrfs-clear-stale-qgroups.timer
+    enabled: '{{ btrfs_stale_qgroup_maintenance_enabled | bool }}'
+    state: '{{ "started" if btrfs_stale_qgroup_maintenance_enabled else "stopped" }}'
+    daemon_reload: true
+  become: true
+  when:
+    - btrfs_stale_qgroup_maintenance_install_enabled | bool
+    - not ansible_check_mode or (btrfs_stale_qgroup_timer_stat.stat.exists | default(false))
+  tags: [qgroup-maintenance]

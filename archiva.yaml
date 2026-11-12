@@ -1,0 +1,6 @@
+---
+
+- hosts: archiva
+
+  roles:
+    - role: archiva

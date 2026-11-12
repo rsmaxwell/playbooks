@@ -1,0 +1,58 @@
+---
+# Bootstrap: another_user is the new admin. Setup: manage that same account,
+# falling back to the SSH login account if another_user was not provided.
+- name: Select managed SSH account
+  ansible.builtin.set_fact:
+    ssh_access_user: "{{ another_user | default(ansible_user) }}"
+
+- name: Read actual hostname for the existing keys directory convention
+  ansible.builtin.command: hostname -f
+  register: ssh_access_hostname_result
+  changed_when: false
+  check_mode: false
+
+- name: Set actual target hostname
+  ansible.builtin.set_fact:
+    access_ssh_hostname: "{{ ssh_access_hostname_result.stdout | trim }}"
+
+- name: Create SSH directory for managed account
+  ansible.builtin.file:
+    path: "~{{ ssh_access_user }}/.ssh"
+    state: directory
+    owner: "{{ ssh_access_user }}"
+    group: "{{ ssh_access_user }}"
+    mode: '0700'
+
+- name: Install authorised public keys for managed account
+  ansible.posix.authorized_key:
+    user: "{{ ssh_access_user }}"
+    key: "{{ lookup('file', 'keys/' ~ item) }}"
+    state: present
+  loop: "{{ authorized_keys | default([]) }}"
+
+- name: Copy configured outbound SSH files for managed account
+  ansible.builtin.copy:
+    src: "keys/{{ ssh_access_user }}@{{ access_ssh_hostname }}/{{ item }}"
+    dest: "~{{ ssh_access_user }}/.ssh/{{ item }}"
+    owner: "{{ ssh_access_user }}"
+    group: "{{ ssh_access_user }}"
+    mode: '0600'
+  loop: "{{ ssh_files | default([]) }}"
+  no_log: true
+
+- name: Check for controller SSH client configuration
+  ansible.builtin.stat:
+    path: "{{ lookup('env', 'HOME') }}/.ssh/config"
+  register: ssh_access_controller_config
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Copy controller SSH client configuration when present
+  ansible.builtin.copy:
+    src: "{{ lookup('env', 'HOME') }}/.ssh/config"
+    dest: "~{{ ssh_access_user }}/.ssh/config"
+    owner: "{{ ssh_access_user }}"
+    group: "{{ ssh_access_user }}"
+    mode: '0600'
+  when: ssh_access_controller_config.stat.isreg | default(false)

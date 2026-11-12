@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: golang-alpine-pvc
+  namespace: jenkins
+spec:
+  selector: 
+    matchLabels: 
+      app: golang-alpine
+  storageClassName: local-storage
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi

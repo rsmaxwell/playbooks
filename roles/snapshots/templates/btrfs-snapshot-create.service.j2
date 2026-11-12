@@ -1,0 +1,8 @@
+[Unit]
+Description=Create timestamp-named Btrfs snapshots
+After=local-fs.target
+ConditionPathExists={{ btrfs_snapshot_manager_config_path }}
+
+[Service]
+Type=oneshot
+ExecStart={{ btrfs_snapshot_manager_path }} --config {{ btrfs_snapshot_manager_config_path }} create

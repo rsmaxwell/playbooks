@@ -1,0 +1,36 @@
+#!/bin/bash
+
+set -euo pipefail
+
+INFRASTRUCTURE_PROJECT_DIR="{{ infrastructure_project_dir }}"
+NGINX_LOCATION_FILE="{{ jenkins_nginx_location_file }}"
+
+echo "Deactivate the Jenkins route in shared Nginx"
+rm -f "${NGINX_LOCATION_FILE}"
+
+cd "${INFRASTRUCTURE_PROJECT_DIR}"
+if docker compose ps --status running nginx --format json 2>/dev/null | grep -q '"Service":"nginx"'; then
+    docker compose exec -T nginx nginx -t
+    docker compose exec -T nginx nginx -s reload
+else
+    echo "Shared Nginx is not running; route symlink has still been removed."
+fi
+
+echo "Check the 'jenkins' deployment exists"
+output=$(kubectl get deployment jenkins -o json 2>&1) || {
+    echo "The 'jenkins' deployment was not found"
+    echo "${output}"
+    exit 0
+}
+
+echo "Check the current number of replicas"
+replicas=$(jq -r '.spec.replicas' <<< "${output}")
+if [[ "${replicas}" -eq 0 ]]; then
+    echo "'replicas' already set to 0"
+    exit 0
+fi
+
+echo "Stop the Jenkins deployment"
+kubectl scale --replicas=0 deployment/jenkins
+
+echo "Scaled to 0"

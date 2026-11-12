@@ -1,0 +1,48 @@
+
+
+# This affects access control for clients with no username.
+# topic readwrite diaries/rpc/request
+
+
+# This only affects clients with username "admin".
+user admin
+topic readwrite diaries/rpc/request
+pattern readwrite diaries/rpc/%c/response
+topic readwrite diaries/diaries/#
+topic readwrite diaries/fragments/#
+topic readwrite diaries/dates/#
+topic readwrite diaries/pages/#
+topic readwrite diaries/marquees/#
+topic readwrite diaries/people/#
+topic readwrite diaries/roles/#
+topic readwrite diaries/#
+topic readwrite test/#
+
+
+# This only affects clients with username "diaries-client".
+user diaries-client
+topic write diaries/rpc/request
+pattern read diaries/rpc/%c/response
+topic read diaries/diaries/#
+topic read diaries/fragments/#
+topic read diaries/dates/#
+topic read diaries/pages/#
+topic read diaries/marquees/#
+topic read diaries/people/#
+topic read diaries/roles/#
+topic read diaries/#
+
+# This only affects clients with username "diaries-responder".
+user diaries-responder
+topic read diaries/rpc/request
+topic write diaries/rpc/+/response
+topic readwrite diaries-sync/#
+topic write diaries/diaries/#
+topic write diaries/fragments/#
+topic write diaries/dates/#
+topic write diaries/pages/#
+topic write diaries/marquees/#
+topic write diaries/people/#
+topic write diaries/roles/#
+topic read diaries/#
+

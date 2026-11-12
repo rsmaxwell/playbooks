@@ -1,0 +1,67 @@
+---
+
+- name: Determine actual target hostname
+  ansible.builtin.command:
+    argv:
+      - hostname
+      - -s
+  register: check_ssh_hostname_result
+  changed_when: false
+  check_mode: false
+
+- name: Set actual target hostname
+  ansible.builtin.set_fact:
+    check_ssh_hostname: "{{ check_ssh_hostname_result.stdout | trim }}"
+
+- name: Verify administrative SSH public-key authentication
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -o
+      - BatchMode=yes
+      - -o
+      - PasswordAuthentication=no
+      - -o
+      - ConnectTimeout=10
+      - "{{ check_ssh_hostname }}"
+      - id
+      - -un
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: check_ssh_login
+  changed_when: false
+  failed_when: >-
+    check_ssh_login.rc != 0 or
+    check_ssh_login.stdout | trim != another_user
+
+- name: Verify administrative passwordless sudo
+  ansible.builtin.command:
+    argv:
+      - ssh
+      - -o
+      - BatchMode=yes
+      - -o
+      - PasswordAuthentication=no
+      - -o
+      - ConnectTimeout=10
+      - "{{ check_ssh_hostname }}"
+      - sudo
+      - -n
+      - id
+      - -un
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: check_ssh_sudo
+  changed_when: false
+  failed_when: >-
+    check_ssh_sudo.rc != 0 or
+    check_ssh_sudo.stdout | trim != 'root'
+
+- name: Report successful administrative SSH verification
+  ansible.builtin.debug:
+    msg:
+      - "PASS: SSH alias {{ check_ssh_hostname }}"
+      - "PASS: Administrative user {{ another_user }} authenticated"
+      - "PASS: Passwordless sudo verified"

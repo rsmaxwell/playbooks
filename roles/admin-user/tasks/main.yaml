@@ -1,0 +1,27 @@
+---
+# Run only after the bootstrap SSH/password connection has been established.
+- name: Require the configured administrative username
+  ansible.builtin.assert:
+    that:
+      - another_user is defined
+      - another_user | length > 0
+    fail_msg: "Set another_user for initial bootstrap."
+
+- name: "Create or maintain administrative user {{ another_user }}"
+  ansible.builtin.user:
+    name: "{{ another_user }}"
+    password: "{{ (another_user_password | password_hash('sha512')) if (another_user_password is defined) else omit }}"
+    update_password: on_create
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    state: present
+
+- name: Install administrative sudoers rule
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: /etc/sudoers.d/sudoers
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'

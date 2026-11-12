@@ -1,0 +1,74 @@
+---
+- name: 0035 Step 6 | Source side read-only replication state
+  hosts: mars
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Capture source UUIDs, pins, lock and schedule (read only)
+      ansible.builtin.shell: |
+        set -eu
+        echo '=== source snapshots and protection ==='
+        /usr/local/sbin/btrfs-snapshot-manager status
+        cat /media/usb/@snapshots/.replication-protection.json
+        cat /media/usb/@snapshots/.checkpoint-holds.json
+        echo '=== accepted source endpoint and permissions ==='
+        stat -c '%F %a %U:%G %n' /usr/local/libexec/btrfs-native-endpoint /usr/local/bin/btrfs-native-push /media/usb/@snapshots/.native-push.lock
+        echo '=== sender schedule ==='
+        systemctl show btrfs-native-push.timer -p ActiveState -p UnitFileState -p LastTriggerUSec -p NextElapseUSecRealtime
+        echo '=== source latest protected UUID ==='
+        python3 - <<'PYCODE'
+        import json,subprocess
+        from pathlib import Path
+        p=Path('/media/usb/@snapshots/.replication-protection.json')
+        for stamp,uuid in sorted(json.loads(p.read_text())['protected'].items()):
+            path='/media/usb/@snapshots/@data/'+stamp
+            result=subprocess.run(['btrfs','subvolume','show',path],capture_output=True,text=True,timeout=15)
+            props=subprocess.run(['btrfs','property','get','-ts',path,'ro'],capture_output=True,text=True,timeout=15)
+            actual=next((line.split(':',1)[1].strip() for line in result.stdout.splitlines() if line.strip().startswith('UUID:')),None)
+            print(stamp,'recorded_uuid=',uuid,'actual_uuid=',actual,'readonly=',props.stdout.strip(),'MATCH=',result.returncode==0 and props.returncode==0 and actual==uuid and props.stdout.strip()=='ro=true')
+        PYCODE
+      args:
+        executable: /bin/bash
+      register: source_capture
+      changed_when: false
+    - ansible.builtin.debug:
+        var: source_capture.stdout_lines
+
+- name: 0035 Step 6 | Destination accepted lineage state
+  hosts: backup
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Capture independent native acceptance receipts (read only)
+      ansible.builtin.shell: |
+        set -eu
+        echo '=== destination filesystem and receive repository ==='
+        findmnt -no TARGET,SOURCE,FSTYPE,UUID /
+        stat -c '%F %a %U:%G %n' /@data/mars-received/@data /@data/mars-received/.replication-state /@data/mars-received/.replication-state/writer.lock
+        echo '=== independent receipt/UUID/read-only reconciliation ==='
+        python3 - <<'PYCODE'
+        import json,re,subprocess
+        from pathlib import Path
+        root=Path('/@data/mars-received/@data')
+        state=Path('/@data/mars-received/.replication-state')
+        stamps=sorted(p.stem for p in state.glob('*.json') if re.fullmatch(r'\d{8}-\d{6}Z',p.stem))
+        actual=sorted(p.name for p in root.iterdir() if re.fullmatch(r'\d{8}-\d{6}Z',p.name))
+        print('receipt_count=',len(stamps),'snapshot_count=',len(actual),'unreceipted=',sorted(set(actual)-set(stamps)),'missing=',sorted(set(stamps)-set(actual)))
+        for stamp in stamps:
+            receipt=json.loads((state/(stamp+'.json')).read_text())
+            path=root/stamp
+            info=subprocess.run(['btrfs','subvolume','show',str(path)],capture_output=True,text=True,timeout=15)
+            ro=subprocess.run(['btrfs','property','get','-ts',str(path),'ro'],capture_output=True,text=True,timeout=15)
+            observed=next((line.split(':',1)[1].strip() for line in info.stdout.splitlines() if line.strip().startswith('Received UUID:')),None)
+            parent=receipt.get('parent_snapshot')
+            ok=(info.returncode==0 and ro.returncode==0 and ro.stdout.strip()=='ro=true' and observed==receipt.get('source_uuid')==receipt.get('received_uuid') and (parent is None or parent in stamps))
+            print(stamp,'parent=',parent,'source_uuid=',receipt.get('source_uuid'),'received_uuid=',observed,'readonly=',ro.stdout.strip(),'MATCH=',ok)
+        PYCODE
+        echo '=== destination local scheduling ==='
+        for unit in btrfs-snapshot-create.timer btrfs-snapshot-prune.timer; do systemctl show "$unit" -p ActiveState -p UnitFileState; done
+      args:
+        executable: /bin/bash
+      register: receiver_capture
+      changed_when: false
+    - ansible.builtin.debug:
+        var: receiver_capture.stdout_lines

@@ -1,0 +1,17 @@
+---
+
+- name: diaries:handler | Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Reload systemd
+
+
+- name: diaries:handler | Enable and start diaries compose stack
+  become: true
+  ansible.builtin.systemd:
+    name: diaries-compose.service
+    enabled: true
+    state: restarted
+  listen: Restart diaries stack
+

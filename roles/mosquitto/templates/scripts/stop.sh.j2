@@ -1,0 +1,63 @@
+#!/bin/bash
+
+
+
+echo "Change to the infrastructure project directory" 
+cd "{{ infrastructure_project_dir }}" || {
+    echo "Error: $0[${LINENO}]"
+    exit 2
+}
+
+
+echo "Remove the 'mosquitto' location file from the nginx config folder"
+output=$(docker compose exec -T nginx rm -f "/etc/nginx/conf.d/locations/mosquitto.conf" 2>&1)
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error: $0[${LINENO}]: ${result}"
+    echo "${output}"
+    exit 2
+fi
+
+
+echo "Check the nginx configuration" 
+output=$(docker compose exec -T nginx nginx -t 2>&1)
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error: $0[${LINENO}]: ${result}"
+    echo "${output}"
+    exit 2
+fi
+
+
+echo "Reload the nginx configuration" 
+output=$(docker compose exec -T nginx nginx -s reload 2>&1)
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error: $0[${LINENO}]: ${result}"
+    echo "${output}"
+    exit 2
+fi
+
+
+
+
+echo "Change to the mosquitto project directory" 
+cd "{{ mosquitto_project_dir }}" || {
+    echo "Error: $0[${LINENO}]"
+    exit 2
+}
+
+
+echo "Stop the mosquitto stack"
+output=$(docker compose down 2>&1)
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error starting mosquitto"
+    echo "${output}"
+    exit 0
+fi
+
+
+
+exit 1
+

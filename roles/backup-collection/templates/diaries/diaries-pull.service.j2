@@ -1,0 +1,12 @@
+[Unit]
+Description=Pull and verify current Diaries schema-2 publication from pluto
+Wants=network-online.target
+After=network-online.target
+ConditionFileIsExecutable={{ diaries_pull_script_dir }}/diaries-pull.sh
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+Group={{ ansible_user }}
+ExecStart={{ diaries_pull_script_dir }}/diaries-pull.sh
+TimeoutStartSec={{ diaries_pull_timeout_start_sec }}

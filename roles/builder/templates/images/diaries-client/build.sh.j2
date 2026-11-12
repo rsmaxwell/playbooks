@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+require_env() {
+    local name
+    for name in "$@"; do
+        if [ -z "${!name+x}" ] || [ -z "${!name}" ]; then
+            echo "ERROR: Required environment variable '$name' is not set or is empty" >&2
+            exit 2
+        fi
+    done
+}
+
+
+echo "Change to the image directory under the builder project"
+cd "{{ builder_project_dir }}/images/diaries-client" || {
+    echo "Error: $0[${LINENO}]"
+    exit 2
+}
+
+set -a
+. {{ builder_project_dir }}/images/.env
+set +a
+
+
+require_env \
+    DOCKER_USERNAME \
+    DOCKER_PASSWORD
+
+
+echo "build the docker image"
+output="$(docker build --tag rsmaxwell/diaries-client .)"
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error: $0[${LINENO}]"
+    echo "${output}"
+    exit 2 
+fi
+
+
+echo "logon to docker"
+output="$(echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin)"
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error: $0[${LINENO}]"
+    echo "${output}"
+    exit 2 
+fi
+
+
+echo "push the image to DockerHub"
+output="$(docker push rsmaxwell/diaries-client)"
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error: $0[${LINENO}]"
+    echo "${output}"
+    exit 2 
+fi
+
+
+
+
+
+
+
+

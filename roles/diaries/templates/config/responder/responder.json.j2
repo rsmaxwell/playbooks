@@ -1,0 +1,48 @@
+{
+  "mqtt" : {
+    "host" : "{{ mosquitto_host }}",
+    "port" : "{{ mosquitto_port }}",
+    "user" : {
+        "username" : "{{ mosquitto_responder_user }}",
+        "password" : "{{ mosquitto_responder_password }}"
+    }
+  },
+  "db" : {
+    "go" : {
+        "driver" : "postgres"
+    },
+    "jdbc" : {
+        "dbms" : "postgresql",
+        "driver" : "org.postgresql.Driver"
+    },
+    "additionalConnectionProperties" : {
+        "hibernate.show_sql" : "false",
+        "hibernate.format_sql" : "true",
+        "hibernate.hbm2ddl.auto" : "update"
+    },
+    "host" : "diaries-db",
+    "port" : 5432,
+    "database": "{{ diaries_db_name }}",
+    "admin" : {
+      "username" : "{{ diaries_db_username }}",
+      "password" : "{{ diaries_db_password }}"
+    },
+    "users" : [{
+        "username" : "{{ postgres_username_1 }}",
+        "password" : "{{ postgres_password_1 }}"
+      }
+    ]
+  },
+  "diaries" : {
+    "root" : "/data",
+    "baseUrl" : "http://localhost:8081",
+    "diaries" : "diaries",
+    "files" : "files"
+  },
+  "refreshPeriod": "10h",
+  "refreshExpiration": "120h",
+  "secret" : "{{ diaries_secret }}",
+  "normaliseOnStartup" : true,
+  "fragmentLockTtlSeconds": 900,
+  "imageFragmentWritesEnabled": {{ diaries_image_fragment_writes_enabled | bool | lower }}
+}

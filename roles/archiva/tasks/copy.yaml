@@ -1,0 +1,69 @@
+---
+
+
+- name: archiva:copy | Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ projects_dir }}"
+    - "{{ archiva_project_dir }}"
+    - "{{ archiva_project_dir }}/scripts"
+    - "{{ archiva_project_dir }}/scripts/snippets"
+    - "{{ archiva_project_dir }}/data"
+
+
+
+- name: archiva:copy | Sync files
+  ansible.posix.synchronize:
+    src: sync/
+    dest: "{{ archiva_project_dir }}/"
+    rsync_opts:
+      - "--omit-dir-times"
+  register: result
+- debug:
+    var: result.stdout_lines
+
+
+- name: archiva:copy | Template files
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "{{ archiva_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "compose.yaml", mode: '0666' }
+    - { path: ".env", mode: '0744' }
+    - { path: "scripts/snippets/archiva-credentials.sh", mode: '0700' }
+    - { path: "scripts/start.sh", mode: '0744' }
+    - { path: "scripts/stop.sh", mode: '0744' }
+    - { path: "scripts/test/call-archiva-check-user-upload.sh", mode: '0744' }
+
+
+- name: archiva:copy | Install the nginx config file for archiva
+  ansible.builtin.copy:
+    src: "misc/{{ item.path }}"
+    dest: "{{ infrastructure_project_dir }}{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "/nginx/config/files/archiva.conf", mode: '0644' }
+
+
+- name: archiva:copy | Install archiva systemd unit
+  become: true
+  ansible.builtin.template:
+    src: "compose/archiva-compose.service.j2"
+    dest: "/etc/systemd/system/archiva-compose.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart systemd
+    - Restart infrastructure stack
+
+
+
+
+
+
+
+

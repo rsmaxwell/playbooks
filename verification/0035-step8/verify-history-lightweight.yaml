@@ -1,0 +1,62 @@
+---
+# 0035 Step 8 Gate B1: non-destructive history identity/path inspection only.
+- name: Gate B1 | inspect mars existing verified history without hashing full dataset
+  hosts: mars
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Show old verified production backup in retained snapshots
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-backup-history, --json, show, '20261009-154847Z', --logical-dataset, production]
+      register: mars_old
+      changed_when: false
+    - name: Show latest verified production backup in retained snapshots
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-backup-history, --json, show, '20261015-003023Z', --logical-dataset, production]
+      register: mars_latest
+      changed_when: false
+    - name: Resolve retained backup source path
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-backup-history, path, '20261015-003023Z', --logical-dataset, production]
+      register: mars_path
+      changed_when: false
+    - name: Check read-only history result and absolute, contained restore path
+      ansible.builtin.assert:
+        that:
+          - (mars_old.stdout | from_json).backupId == '20261009-154847Z'
+          - (mars_latest.stdout | from_json).backupId == '20261015-003023Z'
+          - (mars_latest.stdout | from_json).logicalDataset == 'production'
+          - mars_path.stdout.startswith('/media/usb/@snapshots/@data/')
+          - "'/backup/pluto/' in mars_path.stdout"
+    - name: Record mars path and first/last occurrences
+      ansible.builtin.debug:
+        msg:
+          - 'mars_old={{ mars_old.stdout }}'
+          - 'mars_latest={{ mars_latest.stdout }}'
+          - 'mars_path={{ mars_path.stdout }}'
+- name: Gate B1 | inspect current pluto published backup without hashing full dataset
+  hosts: pluto
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Show live publication identity
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-backup-history, --published-root, /home/richard/projects/diaries/data/diaries-backup, --json, show, '20261015-003023Z', --logical-dataset, production]
+      register: pluto_show
+      changed_when: false
+    - name: Resolve live publication path
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-backup-history, --published-root, /home/richard/projects/diaries/data/diaries-backup, path, '20261015-003023Z', --logical-dataset, production]
+      register: pluto_path
+      changed_when: false
+    - name: Assert live published identity and resolved generation
+      ansible.builtin.assert:
+        that:
+          - (pluto_show.stdout | from_json).backupId == '20261015-003023Z'
+          - (pluto_show.stdout | from_json).logicalDataset == 'production'
+          - "'/.diaries-backup-generations/' in pluto_path.stdout"
+    - name: Record pluto publication location
+      ansible.builtin.debug:
+        msg:
+          - 'pluto_show={{ pluto_show.stdout }}'
+          - 'pluto_path={{ pluto_path.stdout }}'

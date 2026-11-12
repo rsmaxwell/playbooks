@@ -1,0 +1,152 @@
+---
+
+
+
+
+- name: diaries:mosquitto-password | Manage Mosquitto password file
+  block:
+    - name: diaries:mosquitto-password | Validate MQTT credential variables
+      ansible.builtin.assert:
+        that:
+          - mosquitto_admin_user | string | length > 0
+          - mosquitto_admin_password | string | length > 0
+          - mosquitto_client_user | string | length > 0
+          - mosquitto_client_password | string | length > 0
+          - mosquitto_responder_user | string | length > 0
+          - mosquitto_responder_password | string | length > 0
+          - mosquitto_web_user | string | length > 0
+          - mosquitto_web_password | string | length > 0
+          - mosquitto_health_username | string | length > 0
+          - mosquitto_health_password | string | length > 0
+        quiet: true
+        fail_msg: Required MQTT username/password variables are missing or empty.
+      no_log: true
+
+    - name: diaries:mosquitto-password | Calculate credential fingerprint
+      ansible.builtin.set_fact:
+        mosquitto_pw_source_checksum: >-
+          {{
+            [
+              mosquitto_admin_user,
+              mosquitto_admin_password,
+              mosquitto_client_user,
+              mosquitto_client_password,
+              mosquitto_responder_user,
+              mosquitto_responder_password,
+              mosquitto_web_user,
+              mosquitto_web_password,
+              mosquitto_health_username,
+              mosquitto_health_password
+            ]
+            | to_json
+            | hash('sha256')
+          }}
+      no_log: true
+
+    - name: diaries:mosquitto-password | Check installed password file
+      become: true
+      ansible.builtin.stat:
+        path: "{{ diaries_project_dir }}/config/mosquitto/pwfile.txt"
+      register: mosquitto_pwfile_stat
+      no_log: true
+
+    - name: diaries:mosquitto-password | Check installed password checksum marker
+      become: true
+      ansible.builtin.stat:
+        path: "{{ diaries_project_dir }}/config/mosquitto/pwfile.source.sha256"
+      register: mosquitto_pw_marker_stat
+      no_log: true
+
+    - name: diaries:mosquitto-password | Read installed password checksum marker
+      become: true
+      ansible.builtin.slurp:
+        path: "{{ diaries_project_dir }}/config/mosquitto/pwfile.source.sha256"
+      register: mosquitto_pw_marker
+      when: mosquitto_pw_marker_stat.stat.exists
+      no_log: true
+
+    - name: diaries:mosquitto-password | Normalise installed password checksum
+      ansible.builtin.set_fact:
+        mosquitto_installed_source_checksum: >-
+          {{
+            (mosquitto_pw_marker.content | b64decode | trim)
+            if mosquitto_pw_marker_stat.stat.exists
+            else ''
+          }}
+      no_log: true
+
+    - name: diaries:mosquitto-password | Decide whether password file must be regenerated
+      ansible.builtin.set_fact:
+        mosquitto_regenerate_pwfile: >-
+          {{
+            (not mosquitto_pwfile_stat.stat.exists)
+            or
+            (mosquitto_installed_source_checksum
+              != mosquitto_pw_source_checksum)
+          }}
+      no_log: true
+
+    - name: diaries:mosquitto-password | Regenerate password file when required
+      when: mosquitto_regenerate_pwfile
+      block:
+        - name: diaries:mosquitto-password | Create temporary password source file on target
+          become: true
+          ansible.builtin.tempfile:
+            state: file
+            suffix: .pwfile.source
+          register: mosquitto_pw_target_tmp
+          no_log: true
+
+        - name: diaries:mosquitto-password | Write password source on target
+          become: true
+          ansible.builtin.copy:
+            content: |
+              {{ mosquitto_admin_user }}:{{ mosquitto_admin_password }}
+              {{ mosquitto_client_user }}:{{ mosquitto_client_password }}
+              {{ mosquitto_responder_user }}:{{ mosquitto_responder_password }}
+              {{ mosquitto_web_user }}:{{ mosquitto_web_password }}
+              {{ mosquitto_health_username }}:{{ mosquitto_health_password }}
+            dest: "{{ mosquitto_pw_target_tmp.path }}"
+            owner: root
+            group: root
+            mode: "0600"
+          no_log: true
+
+        - name: diaries:mosquitto-password | Hash password file in place
+          become: true
+          ansible.builtin.command:
+            cmd: "mosquitto_passwd -U {{ mosquitto_pw_target_tmp.path }}"
+          no_log: true
+
+        - name: diaries:mosquitto-password | Install hashed Mosquitto password file
+          become: true
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ mosquitto_pw_target_tmp.path }}"
+            dest: "{{ diaries_project_dir }}/config/mosquitto/pwfile.txt"
+            owner: "1883"
+            group: "1883"
+            mode: "0600"
+          no_log: true
+          notify: Restart diaries stack
+
+        - name: diaries:mosquitto-password | Write password source checksum marker
+          become: true
+          ansible.builtin.copy:
+            content: "{{ mosquitto_pw_source_checksum }}\n"
+            dest: "{{ diaries_project_dir }}/config/mosquitto/pwfile.source.sha256"
+            owner: "1883"
+            group: "1883"
+            mode: "0600"
+          no_log: true
+
+      always:
+        - name: diaries:mosquitto-password | Remove temporary password source from target
+          become: true
+          ansible.builtin.file:
+            path: "{{ mosquitto_pw_target_tmp.path | default('') }}"
+            state: absent
+          when:
+            - mosquitto_pw_target_tmp is defined
+            - mosquitto_pw_target_tmp.path is defined
+          no_log: true

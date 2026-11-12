@@ -1,0 +1,384 @@
+{
+  "schema": 1,
+  "purpose": "0040-FEAT Step 11 approved historical root inventory; not deletion authorisation",
+  "snapshots": [
+    {
+      "timestamp": "20261011-230026Z",
+      "path": "/media/usb/@snapshots/root/20261011-230026Z",
+      "id": 20556,
+      "uuid": "244d7f56-7a03-0745-b291-4100bece83ab"
+    },
+    {
+      "timestamp": "20261012-230026Z",
+      "path": "/media/usb/@snapshots/root/20261012-230026Z",
+      "id": 20602,
+      "uuid": "e21c0293-4894-364f-929f-1b280c52882f"
+    },
+    {
+      "timestamp": "20261013-171228Z",
+      "path": "/media/usb/@snapshots/root/20261013-171228Z",
+      "id": 20638,
+      "uuid": "fb96134e-3614-fb47-baf7-c82e81f1174f"
+    },
+    {
+      "timestamp": "20261013-230026Z",
+      "path": "/media/usb/@snapshots/root/20261013-230026Z",
+      "id": 20650,
+      "uuid": "e952fdaa-46ff-4643-8c11-f4dda3ce0649"
+    },
+    {
+      "timestamp": "20261014-230008Z",
+      "path": "/media/usb/@snapshots/root/20261014-230008Z",
+      "id": 20698,
+      "uuid": "6368401c-89c4-094a-b661-989f47bee019"
+    },
+    {
+      "timestamp": "20261015-230003Z",
+      "path": "/media/usb/@snapshots/root/20261015-230003Z",
+      "id": 20744,
+      "uuid": "dbb41cde-64d7-444e-9807-5beb96cac385"
+    },
+    {
+      "timestamp": "20261016-230026Z",
+      "path": "/media/usb/@snapshots/root/20261016-230026Z",
+      "id": 20799,
+      "uuid": "ed6ea4fb-039f-0841-8600-7032ffe8a23d"
+    },
+    {
+      "timestamp": "20261017-230035Z",
+      "path": "/media/usb/@snapshots/root/20261017-230035Z",
+      "id": 20847,
+      "uuid": "69d9504d-d88c-5c41-937c-9c2b49a0d06c"
+    },
+    {
+      "timestamp": "20261018-165453Z",
+      "path": "/media/usb/@snapshots/root/20261018-165453Z",
+      "id": 20883,
+      "uuid": "fb457e69-760f-344c-82a9-e44ceec30ee5"
+    },
+    {
+      "timestamp": "20261018-230008Z",
+      "path": "/media/usb/@snapshots/root/20261018-230008Z",
+      "id": 20897,
+      "uuid": "77fbc7a0-58d1-1c40-8e05-03eed7fd69f4"
+    },
+    {
+      "timestamp": "20261019-230026Z",
+      "path": "/media/usb/@snapshots/root/20261019-230026Z",
+      "id": 20945,
+      "uuid": "699f5ef5-2a96-3844-a5da-628f4226ba8c"
+    },
+    {
+      "timestamp": "20261020-230018Z",
+      "path": "/media/usb/@snapshots/root/20261020-230018Z",
+      "id": 20993,
+      "uuid": "3d8b3253-bc1f-ea4b-82c3-cf60b7bef910"
+    },
+    {
+      "timestamp": "20261021-230016Z",
+      "path": "/media/usb/@snapshots/root/20261021-230016Z",
+      "id": 21041,
+      "uuid": "85e0db68-c05c-0143-a89f-1b049dcbd566"
+    },
+    {
+      "timestamp": "20261022-230029Z",
+      "path": "/media/usb/@snapshots/root/20261022-230029Z",
+      "id": 21093,
+      "uuid": "84029b6c-2cea-c646-b428-11f87e53c1c9"
+    },
+    {
+      "timestamp": "20261023-030037Z",
+      "path": "/media/usb/@snapshots/root/20261023-030037Z",
+      "id": 21101,
+      "uuid": "43b4ad8d-7988-c64c-bfbc-86777f9e04b3"
+    },
+    {
+      "timestamp": "20261023-200008Z",
+      "path": "/media/usb/@snapshots/root/20261023-200008Z",
+      "id": 21147,
+      "uuid": "6986a4ec-73a0-594e-86ba-ee5850279278"
+    },
+    {
+      "timestamp": "20261023-210017Z",
+      "path": "/media/usb/@snapshots/root/20261023-210017Z",
+      "id": 21149,
+      "uuid": "626b6a03-3681-a349-9489-2883d430301a"
+    },
+    {
+      "timestamp": "20261023-220026Z",
+      "path": "/media/usb/@snapshots/root/20261023-220026Z",
+      "id": 21151,
+      "uuid": "5fa8be63-f879-ee4a-aa4b-f30c1f2271be"
+    },
+    {
+      "timestamp": "20261023-230005Z",
+      "path": "/media/usb/@snapshots/root/20261023-230005Z",
+      "id": 21153,
+      "uuid": "a0ffce60-3148-6841-8cc0-a3582958ae94"
+    },
+    {
+      "timestamp": "20261024-000014Z",
+      "path": "/media/usb/@snapshots/root/20261024-000014Z",
+      "id": 21155,
+      "uuid": "e125f50e-d7c6-0a48-97c6-040e6d747d55"
+    },
+    {
+      "timestamp": "20261024-010023Z",
+      "path": "/media/usb/@snapshots/root/20261024-010023Z",
+      "id": 21157,
+      "uuid": "98b2189f-0c12-a540-9788-3518ff1443e2"
+    },
+    {
+      "timestamp": "20261024-020032Z",
+      "path": "/media/usb/@snapshots/root/20261024-020032Z",
+      "id": 21159,
+      "uuid": "74dc45f5-6a26-a844-804e-d870f64b794e"
+    },
+    {
+      "timestamp": "20261024-030038Z",
+      "path": "/media/usb/@snapshots/root/20261024-030038Z",
+      "id": 21161,
+      "uuid": "6a45fa76-1c2d-3249-8ac9-35f06f8966e3"
+    },
+    {
+      "timestamp": "20261024-040038Z",
+      "path": "/media/usb/@snapshots/root/20261024-040038Z",
+      "id": 21163,
+      "uuid": "c6aec5ad-42c8-5b4f-8a79-bbc8d341a482"
+    },
+    {
+      "timestamp": "20261024-050038Z",
+      "path": "/media/usb/@snapshots/root/20261024-050038Z",
+      "id": 21165,
+      "uuid": "ebf1009a-9b6b-2141-b6d5-3fe831fb320f"
+    },
+    {
+      "timestamp": "20261024-060014Z",
+      "path": "/media/usb/@snapshots/root/20261024-060014Z",
+      "id": 21167,
+      "uuid": "79ef4de9-ef30-ed48-9f98-b1f27f2bad10"
+    },
+    {
+      "timestamp": "20261024-070038Z",
+      "path": "/media/usb/@snapshots/root/20261024-070038Z",
+      "id": 21169,
+      "uuid": "4dfab69c-5bb1-fa4f-8f56-d9120bece6d1"
+    },
+    {
+      "timestamp": "20261024-080038Z",
+      "path": "/media/usb/@snapshots/root/20261024-080038Z",
+      "id": 21171,
+      "uuid": "005ce2dc-f885-0a41-a0ca-bd3e8fb73dea"
+    },
+    {
+      "timestamp": "20261024-090004Z",
+      "path": "/media/usb/@snapshots/root/20261024-090004Z",
+      "id": 21173,
+      "uuid": "6ebab137-c9e3-214f-b7eb-057303e23787"
+    },
+    {
+      "timestamp": "20261024-100003Z",
+      "path": "/media/usb/@snapshots/root/20261024-100003Z",
+      "id": 21175,
+      "uuid": "7fbf49e6-070c-fb48-a75d-88782cdeab02"
+    },
+    {
+      "timestamp": "20261024-110012Z",
+      "path": "/media/usb/@snapshots/root/20261024-110012Z",
+      "id": 21177,
+      "uuid": "a08b8231-0f45-db4b-8939-b8aa79dcc679"
+    },
+    {
+      "timestamp": "20261024-120033Z",
+      "path": "/media/usb/@snapshots/root/20261024-120033Z",
+      "id": 21179,
+      "uuid": "8d089227-636e-7b43-9b9d-d2e9039e1a0b"
+    },
+    {
+      "timestamp": "20261024-130000Z",
+      "path": "/media/usb/@snapshots/root/20261024-130000Z",
+      "id": 21181,
+      "uuid": "332d423a-a7ab-ef4d-b89a-c83f406e6c51"
+    },
+    {
+      "timestamp": "20261024-140005Z",
+      "path": "/media/usb/@snapshots/root/20261024-140005Z",
+      "id": 21183,
+      "uuid": "77cbabc6-a3f4-2f40-a3dc-a73ae32b1111"
+    },
+    {
+      "timestamp": "20261024-150025Z",
+      "path": "/media/usb/@snapshots/root/20261024-150025Z",
+      "id": 21185,
+      "uuid": "f0176c89-36ef-8745-945b-e7262c0698fb"
+    },
+    {
+      "timestamp": "20261024-160006Z",
+      "path": "/media/usb/@snapshots/root/20261024-160006Z",
+      "id": 21187,
+      "uuid": "2a4cb5eb-05e5-1940-b585-cf10277d70c3"
+    },
+    {
+      "timestamp": "20261024-170011Z",
+      "path": "/media/usb/@snapshots/root/20261024-170011Z",
+      "id": 21189,
+      "uuid": "45198aa7-9166-f840-8299-0024929a2fde"
+    },
+    {
+      "timestamp": "20261024-180038Z",
+      "path": "/media/usb/@snapshots/root/20261024-180038Z",
+      "id": 21191,
+      "uuid": "6b84947d-57d2-e240-a20f-ee3ad353881d"
+    },
+    {
+      "timestamp": "20261024-190006Z",
+      "path": "/media/usb/@snapshots/root/20261024-190006Z",
+      "id": 21193,
+      "uuid": "56ef176f-4058-ea4e-a463-0a4359cc102f"
+    },
+    {
+      "timestamp": "20261024-200016Z",
+      "path": "/media/usb/@snapshots/root/20261024-200016Z",
+      "id": 21195,
+      "uuid": "9fb8a6f6-0187-124f-9100-edf13be2b893"
+    },
+    {
+      "timestamp": "20261024-210016Z",
+      "path": "/media/usb/@snapshots/root/20261024-210016Z",
+      "id": 21197,
+      "uuid": "53045c31-e007-1a48-b26e-27026c2189ac"
+    },
+    {
+      "timestamp": "20261024-220002Z",
+      "path": "/media/usb/@snapshots/root/20261024-220002Z",
+      "id": 21199,
+      "uuid": "de6f520b-c86a-9148-bb26-c0e3e77238ad"
+    },
+    {
+      "timestamp": "20261024-230011Z",
+      "path": "/media/usb/@snapshots/root/20261024-230011Z",
+      "id": 21201,
+      "uuid": "45ccd6db-409e-aa45-8fc4-cfaea1908b47"
+    },
+    {
+      "timestamp": "20261025-000020Z",
+      "path": "/media/usb/@snapshots/root/20261025-000020Z",
+      "id": 21203,
+      "uuid": "b6d4ff6b-d46b-b646-be70-40b1d3a7c424"
+    },
+    {
+      "timestamp": "20261025-010026Z",
+      "path": "/media/usb/@snapshots/root/20261025-010026Z",
+      "id": 21205,
+      "uuid": "2d579237-3fa1-ce4c-bdd2-43956c88b07f"
+    },
+    {
+      "timestamp": "20261025-020038Z",
+      "path": "/media/usb/@snapshots/root/20261025-020038Z",
+      "id": 21207,
+      "uuid": "51ac7415-49a5-2749-87dd-e4fa2bc11c26"
+    },
+    {
+      "timestamp": "20261025-030026Z",
+      "path": "/media/usb/@snapshots/root/20261025-030026Z",
+      "id": 21209,
+      "uuid": "ef01d8ea-1d9d-6b42-8268-e9383ebf848c"
+    },
+    {
+      "timestamp": "20261025-040026Z",
+      "path": "/media/usb/@snapshots/root/20261025-040026Z",
+      "id": 21211,
+      "uuid": "cb773a81-8267-3b4e-ba95-038d3d54cc40"
+    },
+    {
+      "timestamp": "20261025-050005Z",
+      "path": "/media/usb/@snapshots/root/20261025-050005Z",
+      "id": 21213,
+      "uuid": "0ce4859d-6ab4-db4d-b24f-217f53cc9160"
+    },
+    {
+      "timestamp": "20261025-060038Z",
+      "path": "/media/usb/@snapshots/root/20261025-060038Z",
+      "id": 21215,
+      "uuid": "19194936-030f-d048-a137-5a7bc5ee7f52"
+    },
+    {
+      "timestamp": "20261025-070026Z",
+      "path": "/media/usb/@snapshots/root/20261025-070026Z",
+      "id": 21217,
+      "uuid": "8674635f-e760-534f-bfd2-9213efed18c5"
+    },
+    {
+      "timestamp": "20261025-080000Z",
+      "path": "/media/usb/@snapshots/root/20261025-080000Z",
+      "id": 21219,
+      "uuid": "999866fe-8657-824a-b678-9415b6abaa2b"
+    },
+    {
+      "timestamp": "20261025-090008Z",
+      "path": "/media/usb/@snapshots/root/20261025-090008Z",
+      "id": 21221,
+      "uuid": "5cbe2f58-5f4d-4043-aeb7-7f4db97e1d09"
+    },
+    {
+      "timestamp": "20261025-100018Z",
+      "path": "/media/usb/@snapshots/root/20261025-100018Z",
+      "id": 21223,
+      "uuid": "9e94bbb2-ec1d-c546-aa85-5a3c73c456eb"
+    },
+    {
+      "timestamp": "20261025-110026Z",
+      "path": "/media/usb/@snapshots/root/20261025-110026Z",
+      "id": 21225,
+      "uuid": "1b380b16-7013-414d-8175-7a8425bae00b"
+    },
+    {
+      "timestamp": "20261025-120005Z",
+      "path": "/media/usb/@snapshots/root/20261025-120005Z",
+      "id": 21227,
+      "uuid": "826912ab-5785-894e-a50e-7ecd662eedf6"
+    },
+    {
+      "timestamp": "20261025-130014Z",
+      "path": "/media/usb/@snapshots/root/20261025-130014Z",
+      "id": 21229,
+      "uuid": "b935acd2-96c7-f140-b7df-15e2ab28f78c"
+    },
+    {
+      "timestamp": "20261025-140001Z",
+      "path": "/media/usb/@snapshots/root/20261025-140001Z",
+      "id": 21231,
+      "uuid": "1b27fa14-2ddf-1a40-98d0-570508e0cb37"
+    },
+    {
+      "timestamp": "20261025-150032Z",
+      "path": "/media/usb/@snapshots/root/20261025-150032Z",
+      "id": 21233,
+      "uuid": "0291f2ba-7322-2e4e-b38c-017743c6abb9"
+    },
+    {
+      "timestamp": "20261025-160036Z",
+      "path": "/media/usb/@snapshots/root/20261025-160036Z",
+      "id": 21235,
+      "uuid": "276f316a-805a-ed42-bab8-38b9e6c82c97"
+    },
+    {
+      "timestamp": "20261025-170038Z",
+      "path": "/media/usb/@snapshots/root/20261025-170038Z",
+      "id": 21237,
+      "uuid": "eb79a938-ce99-a045-a755-f6e33eba14b3"
+    },
+    {
+      "timestamp": "20261025-180038Z",
+      "path": "/media/usb/@snapshots/root/20261025-180038Z",
+      "id": 21239,
+      "uuid": "ba91c953-2fb3-e043-a645-eb455c8f30e4"
+    },
+    {
+      "timestamp": "20261025-190006Z",
+      "path": "/media/usb/@snapshots/root/20261025-190006Z",
+      "id": 21241,
+      "uuid": "93ba8961-df1b-eb49-a12c-fb52c716e8a5"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+jenkins:
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+      - group:
+          name: "authenticated"
+          permissions:
+          - "Overall/Read"
+      - user:
+          name: "admin"
+          permissions:
+          - "Overall/Administer"
+  clouds:
+  - kubernetes:
+      name: "kubernetes"
+      namespace: "jenkins"
+      webSocket: true
+      jenkinsUrl: "{{ jenkins_k8s_url }}"
+  labelString: "GyUhNjIblLmSkGsyTF4r"
+  mode: EXCLUSIVE
+  numExecutors: 0
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+       - id: "{{ jenkins_admin_name }}"
+         password: "{{ jenkins_admin_password }}"
+         properties:
+           - sshPublicKey:
+               authorizedKeys: |
+                 {{ lookup('file', 'keys/' ~ jenkins_auth_user_1 ~ '/id_rsa.pub' ) }}
+                 {{ lookup('file', 'keys/' ~ jenkins_auth_user_2 ~ '/id_rsa.pub' ) }}
+       - id: "{{ jenkins_username }}"
+         password: "{{ jenkins_user_password }}"
+  slaveAgentPort: {{ jenkins_slave_agent_port }}
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "docker-registry-creds"
+              username: "{{ docker_username }}"
+              password: "{{ docker_password }}"
+              description: "Docker registry credentials"
+
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "{{ jenkins_github_ssh_credential_id }}"
+              username: "{{ jenkins_github_ssh_username }}"
+              description: "{{ jenkins_github_ssh_description }}"
+              privateKeySource:
+                directEntry:
+                  privateKey: |
+{{ lookup('file', 'keys/ledger-jenkins/jenkins-ledger-github') | indent(20, true) }}
+
+security:
+  gitHostKeyVerificationConfiguration:
+    sshHostKeyVerificationStrategy: "acceptFirstConnectionStrategy"
+
+  queueItemAuthenticator:
+    authenticators:
+    - global:
+        strategy: triggeringUsersAuthorizationStrategy
+
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
+  sSHD:
+    port: {{ jenkins_ssh_port }}
+
+unclassified:
+  location:
+    url: "{{ jenkins_url }}"

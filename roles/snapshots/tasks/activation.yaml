@@ -1,0 +1,27 @@
+---
+# 0045-FEAT phase: Apply explicitly approved timer activation states.
+- name: snapshots | Enable native snapshot creation timer after explicit acceptance
+  ansible.builtin.systemd:
+    name: btrfs-snapshot-create.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: btrfs_snapshot_activation_enabled | bool
+  become: true
+  tags:
+    - snapshots
+    - activation
+
+- name: snapshots | Enforce explicitly approved source pruning timer state
+  ansible.builtin.systemd:
+    name: btrfs-snapshot-prune.timer
+    state: "{{ 'started' if (btrfs_snapshot_prune_activation_enabled | bool) else 'stopped' }}"
+    enabled: "{{ btrfs_snapshot_prune_activation_enabled | bool }}"
+    daemon_reload: true
+  # A formerly enabled but inactive timer would re-arm on reboot unless
+  # explicitly disabled. Deploy the bounded manager while pruning stays paused.
+  when: btrfs_snapshot_activation_enabled | bool
+  become: true
+  tags:
+    - snapshots
+    - activation

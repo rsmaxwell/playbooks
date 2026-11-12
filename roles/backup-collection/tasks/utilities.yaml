@@ -1,0 +1,12 @@
+---
+
+- name: backup-collection:utilities | Install utility packages
+  ansible.builtin.apt:
+    name:
+      - jq
+      - tree
+      - zip
+      - unzip
+    state: present
+    update_cache: true
+  become: true

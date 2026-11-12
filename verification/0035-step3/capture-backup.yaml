@@ -1,0 +1,51 @@
+---
+- name: 0035 Step 3 | Inspect accepted receiver identity and retention boundaries
+  hosts: backup
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Read-only native receiver inventory
+      ansible.builtin.shell: |
+        set -u
+        echo '=== filesystem ==='
+        findmnt -no TARGET,SOURCE,FSTYPE,UUID /
+        echo '=== paths and ownership ==='
+        for p in /@data/backup /@data/mars-received /@data/mars-received/@data /@data/mars-received/.replication-state /@data/mars-received/.replication-state/writer.lock; do
+          stat -c '%F %a %U:%G %n' "$p" 2>&1 || true
+        done
+        echo '=== received subvolume identities ==='
+        btrfs subvolume list -u -q / | grep 'path @data/mars-received/@data/' || true
+        echo '=== receipts and received-snapshot reconciliation ==='
+        python3 - <<'PYCODE'
+        import json,re,subprocess
+        from pathlib import Path
+        root=Path('/@data/mars-received/@data');state=Path('/@data/mars-received/.replication-state')
+        names=sorted(p.name for p in root.iterdir()) if root.is_dir() else []
+        stamps=sorted(p.stem for p in state.glob('*.json') if re.fullmatch(r'\d{8}-\d{6}Z',p.stem)) if state.is_dir() else []
+        print('received_names=',names)
+        print('receipt_names=',stamps)
+        print('UNRECEIPTED=',sorted(set(names)-set(stamps)))
+        print('MISSING_RECEIVED=',sorted(set(stamps)-set(names)))
+        for stamp in stamps:
+          path=state/(stamp+'.json')
+          try:
+            value=json.loads(path.read_text())
+            out=subprocess.run(['btrfs','property','get','-ts',str(root/stamp),'ro'],capture_output=True,text=True,timeout=10)
+            info=subprocess.run(['btrfs','subvolume','show',str(root/stamp)],capture_output=True,text=True,timeout=10)
+            received=next((x.split(':',1)[1].strip() for x in info.stdout.splitlines() if x.strip().startswith('Received UUID:')),None)
+            matched=out.returncode==0 and 'ro=true' in out.stdout and received==value.get('source_uuid')==value.get('received_uuid')
+            print('RECEIPT',stamp,'matched=',matched,'readonly=',out.stdout.strip(),'received_uuid=',received,'source_uuid=',value.get('source_uuid'),'parent=',value.get('parent_snapshot'))
+          except Exception as exc: print('INCOMPLETE',stamp,type(exc).__name__,str(exc))
+        PYCODE
+        echo '=== receiver helpers and local scheduling ==='
+        sha256sum /usr/local/bin/btrfs-native-push-receiver /usr/local/libexec/btrfs-native-endpoint 2>&1 || true
+        for unit in btrfs-snapshot-create.timer btrfs-snapshot-prune.timer snapper-timeline.timer snapper-cleanup.timer; do systemctl show "$unit" -p ActiveState -p UnitFileState --no-pager 2>&1 || true; done
+        echo '=== quota rescan ==='
+        timeout 10 btrfs quota rescan -s / 2>&1 || echo 'quota status unavailable'
+      args:
+        executable: /bin/bash
+      register: backup_step3
+      changed_when: false
+    - name: Print read-only receiver evidence
+      ansible.builtin.debug:
+        var: backup_step3.stdout_lines

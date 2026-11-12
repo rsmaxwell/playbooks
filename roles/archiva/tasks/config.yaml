@@ -1,0 +1,278 @@
+---
+
+
+- name: archiva:config | Prepare and edit archiva.xml (temp file)
+  block:
+
+    - name: archiva:config | Check if archiva.xml exists
+      ansible.builtin.stat:
+        path: "{{ archiva_conf }}/archiva.xml"
+      register: archiva_xml
+    
+    - name: archiva:config | Start archiva once to generate config (only if missing)
+      block:
+        - name: archiva:config | Restart the archiva service
+          ansible.builtin.command:
+            cmd: docker compose up -d archiva
+            chdir: "{{ archiva_project_dir }}"
+    
+        - name: archiva:config | Wait for the archiva service to start
+          ansible.builtin.shell:
+            cmd: "{{ archiva_scripts_dir }}/archiva-wait-while-starting.sh"
+          changed_when: false
+          register: result
+    
+        - name: archiva:config | Debug wait output
+          ansible.builtin.debug:
+            var: result.stdout_lines
+    
+        - name: archiva:config | Stop the archiva service
+          ansible.builtin.command:
+            cmd: docker compose stop archiva
+            chdir: "{{ archiva_project_dir }}"
+      when: not archiva_xml.stat.exists
+
+    - name: archiva:config | Make temp copy of archiva.xml
+      copy:
+        src: "{{ archiva_conf }}/archiva.xml"
+        dest: "{{ archiva_conf }}/archiva.xml.tmp"
+        remote_src: true
+      check_mode: false
+      changed_when: false
+
+    - name: archiva:config | Apply config edits to temp file
+      block:
+
+        - name: archiva:config | Set the CSRF filter to 'false'
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/redbackRuntimeConfiguration/configurationProperties/rest/csrffilter/enabled
+            value: "false"
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Set the BaseURL
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/redbackRuntimeConfiguration/configurationProperties/rest/baseUrl
+            value: "https://{{ ansible_host }}.{{ domain_suffix }}/archiva"
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Turn off password expiration
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/redbackRuntimeConfiguration/configurationProperties/security/policy/password/expiration/enabled
+            value: "false"
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Turn off password previous
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/redbackRuntimeConfiguration/configurationProperties/security/policy/password/previous/count
+            value: "0"
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Disable Registration
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/webapp/ui/disableRegistration
+            value: "true"
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Allow passwords to be reused
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/redbackRuntimeConfiguration/configurationProperties/security/policy/password/rule/reuse/enabled
+            value: "false"
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Clear existing repositories
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/managedRepositories/*
+            state: absent
+          check_mode: false
+          changed_when: false
+
+        - name: archiva:config | Add managed repositories (release, snapshots, integration)
+          community.general.xml:
+            path: "{{ archiva_conf }}/archiva.xml.tmp"
+            xpath: /configuration/managedRepositories
+            add_children:
+
+              - managedRepository:
+                  _:
+                    - location: /archiva-data/repositories/snapshots
+                    - releases: "false"
+                    - blockRedeployments: "false"
+                    - snapshots: "true"
+                    - scanned: "true"
+                    - refreshCronExpression: "0 0\\,30 * * * ?"
+                    - daysOlder: "30"
+                    - deleteReleasedSnapshots: "false"
+                    - skipPackedIndexCreation: "false"
+                    - stageRepoNeeded: "false"
+                    - id: snapshots
+                    - name: Snapshots
+                    - indexDir: /archiva-data/repositories/snapshots/.indexer
+        
+              - managedRepository:
+                  _:
+                    - location: /archiva-data/repositories/releases
+                    - releases: "true"
+                    - blockRedeployments: "true"
+                    - snapshots: "false"
+                    - scanned: "true"
+                    - retentionCount: "1"
+                    - daysOlder: "0"
+                    - deleteReleasedSnapshots: "false"
+                    - skipPackedIndexCreation: "false"
+                    - stageRepoNeeded: "false"
+                    - id: releases
+                    - name: Releases
+                    - indexDir: /archiva-data/repositories/releases/.indexer
+                    - description: 
+        
+              - managedRepository:
+                  _:
+                    - location: /archiva-data/repositories/integration
+                    - releases: "true"
+                    - blockRedeployments: "true"
+                    - snapshots: "false"
+                    - scanned: "true"
+                    - daysOlder: "30"
+                    - deleteReleasedSnapshots: "false"
+                    - skipPackedIndexCreation: "false"
+                    - stageRepoNeeded: "false"
+                    - id: integration
+                    - name: Integration
+                    - indexDir: /archiva-data/repositories/integration/.indexer
+                    - description: 
+            pretty_print: yes
+          check_mode: false
+          changed_when: false
+
+
+
+
+    - name: archiva:config | Normalize original XML for diff
+      ansible.builtin.command: >
+        xmllint --format "{{ archiva_conf }}/archiva.xml"
+      register: original_archiva_xml_normalized
+      changed_when: false
+      check_mode: false
+    
+    - name: archiva:config | Write normalized original
+      ansible.builtin.copy:
+        dest: "{{ archiva_conf }}/archiva.xml.norm"
+        content: "{{ original_archiva_xml_normalized.stdout }}"
+        mode: "0644"
+      changed_when: false
+      check_mode: false
+    
+    - name: archiva:config | Normalize updated XML for diff
+      ansible.builtin.command: >
+        xmllint --format "{{ archiva_conf }}/archiva.xml.tmp"
+      register: updated_archiva_xml_normalized
+      changed_when: false
+      check_mode: false
+    
+    - name: archiva:config | Write normalized updated XML
+      ansible.builtin.copy:
+        dest: "{{ archiva_conf }}/archiva.xml.norm.tmp"
+        content: "{{ updated_archiva_xml_normalized.stdout }}"
+        mode: "0644"
+      changed_when: false
+      check_mode: false
+    
+    
+    
+    
+    
+    - name: archiva:config | Compare temp to original
+      command: diff -u "{{ archiva_conf }}/archiva.xml.norm" "{{ archiva_conf }}/archiva.xml.norm.tmp"
+      register: archiva_xml_diff
+      failed_when: false
+      check_mode: false
+      changed_when: archiva_xml_diff.rc != 0
+    
+    - name: archiva:config | Show diff (when different)
+      debug:
+        msg: "{{ archiva_xml_diff.stdout }}"
+      when: archiva_xml_diff.rc != 0
+    
+    - name: archiva:config | Replace archiva.xml atomically
+      copy:
+        src: "{{ archiva_conf }}/archiva.xml.norm.tmp"
+        dest: "{{ archiva_conf }}/archiva.xml"
+        remote_src: true
+      when: archiva_xml_diff.rc != 0 and not ansible_check_mode
+
+  always:
+    - name: archiva:config | Remove temporary files
+      ansible.builtin.command:
+        argv:
+          - rm
+          - -f
+          - "{{ archiva_conf }}/archiva.xml.tmp"
+          - "{{ archiva_conf }}/archiva.xml.norm"
+          - "{{ archiva_conf }}/archiva.xml.norm.tmp"
+      changed_when: false
+      check_mode: false
+
+
+
+
+- name: archiva:config | Restart the archiva service (only if config changed)
+  ansible.builtin.command:
+    cmd: docker compose up -d archiva
+    chdir: "{{ archiva_project_dir }}"
+  when: archiva_xml_diff.rc != 0 and not ansible_check_mode
+
+- name: archiva:config | Wait for the archiva service to start
+  ansible.builtin.shell:
+    cmd: "{{ archiva_scripts_dir }}/archiva-wait-while-starting.sh"
+  changed_when: false
+  register: result
+  when: archiva_xml_diff.rc != 0 and not ansible_check_mode
+
+
+
+
+
+
+
+
+- name: archiva:config | Create the admin user
+  ansible.builtin.shell:
+    cmd: "{{ archiva_scripts_dir }}/archiva-create-admin-user.sh"
+  register: result
+  changed_when: result.rc == 1
+  failed_when: result.rc >= 2
+
+- name: archiva:config | Create the developer user
+  ansible.builtin.shell:
+    cmd: "{{ archiva_scripts_dir }}/archiva-create-user.sh"
+  register: result
+  changed_when: result.rc == 1
+  failed_when: result.rc >= 2
+
+- name: archiva:config | Set roles for the developer user
+  ansible.builtin.shell: 
+    cmd: "{{ archiva_scripts_dir }}/archiva-update-developer-roles.sh richard"
+  changed_when: "result.rc >= 1"
+  failed_when: "result.rc >= 2"
+  register: result
+
+- name: archiva:config | Set roles for the guest
+  ansible.builtin.shell: 
+    cmd: "{{ archiva_scripts_dir }}/archiva-update-guest-roles.sh guest"
+  changed_when: "result.rc >= 1"
+  failed_when: "result.rc >= 2"
+  register: result
+

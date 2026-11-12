@@ -1,0 +1,13 @@
+---
+- name: ledger:handler | Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Restart systemd
+- name: ledger:handler | Enable and start Ledger compose service
+  become: true
+  ansible.builtin.systemd:
+    name: ledger-compose.service
+    enabled: true
+    state: restarted
+  listen: Restart ledger stack

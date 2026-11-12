@@ -1,0 +1,17 @@
+
+services:
+
+  archiva:
+    container_name: archiva-archiva
+    image: xetusoss/archiva:latest
+    volumes:
+      - "{{ archiva_project_dir }}/data:/archiva-data"
+    networks:
+      - shared
+    ports:
+      - "127.0.0.1:8080:8080"
+
+networks:
+  shared:
+    external: true
+    name: "{{ archiva_shared_network_name }}"

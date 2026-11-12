@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+exec python3 "${script_dir}/diaries-pull.py" \
+  --host "{{ diaries_pull_host }}" \
+  --source-parent "{{ diaries_pull_source_parent }}" \
+  --destination-parent "{{ diaries_pull_destination_parent }}" \
+  --snapshot-source-root "{{ diaries_pull_snapshot_source_root }}" \
+  --verification-marker "{{ diaries_pull_verification_marker }}" \
+  --repository-lock "{{ diaries_pull_repository_lock }}" \
+  --publisher "${script_dir}/complete-dataset-publisher.py" \
+  --manifest-tool "${script_dir}/complete-dataset-manifest.py" \
+  {{ ('--fixed-source-guard "' ~ diaries_pull_fixed_source_guard ~ '" --fixed-destination ') if (diaries_pull_fixed_destination_enabled | bool) else '' }}"$@"

@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule GFS-style Btrfs snapshot pruning
+
+[Timer]
+OnCalendar={{ btrfs_snapshot_prune_on_calendar }}
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

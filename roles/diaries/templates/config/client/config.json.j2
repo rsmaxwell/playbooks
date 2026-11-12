@@ -1,0 +1,17 @@
+{
+  "brokerMode": "proxy",
+  "brokerProxyPath": "/mosquitto/",
+
+  "responderBaseUrlMode": "same-origin",
+
+  "username": "{{ mosquitto_client_user }}",
+  "password": "{{ mosquitto_client_password }}",
+  "diaries": "diaries",
+  "files": "files",
+  "clientId": "client",
+  "keepalive": 60,
+  "reconnectPeriod": 1000,
+  "connectTimeout": 30000,
+  "protocolVersion": 5,
+  "clean": false
+}

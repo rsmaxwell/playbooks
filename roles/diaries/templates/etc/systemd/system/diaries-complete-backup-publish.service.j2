@@ -1,0 +1,19 @@
+[Unit]
+Description=Create and publish a complete Diaries schema-2 production backup
+Wants=docker.service
+After=docker.service diaries-compose.service
+ConditionFileIsExecutable={{ diaries_project_dir }}/scripts/backup-dataset.sh
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+Group={{ ansible_user }}
+WorkingDirectory={{ diaries_project_dir }}
+{% if diaries_fixed_capture_enabled | bool %}
+ExecStart={{ diaries_project_dir }}/scripts/backup-dataset.sh fixed-capture-preflight
+ExecStart={{ diaries_project_dir }}/scripts/backup-dataset.sh fixed-capture
+{% else %}
+ExecStart={{ diaries_project_dir }}/scripts/backup-dataset.sh publish-preflight
+ExecStart={{ diaries_project_dir }}/scripts/backup-dataset.sh publish
+{% endif %}
+TimeoutStartSec={{ diaries_complete_backup_timeout_start_sec }}

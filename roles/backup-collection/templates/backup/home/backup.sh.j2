@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
+
+location="/media/usb/@data/backup/mars"
+source="{{ normal_user_home }}"
+dest="${location}${source}"
+
+mkdir -p -- "$dest"
+
+rsync -avzh \
+    --omit-dir-times \
+    --itemize-changes \
+    --delete --delete-excluded \
+    --exclude-from=excludes-1 \
+    --include-from=includes \
+    --exclude-from=excludes-2 \
+    "$source/" "$dest/"

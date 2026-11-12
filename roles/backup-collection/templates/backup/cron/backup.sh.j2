@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$script_dir"
+
+location="/media/usb/@data/backup/mars"
+dest="${location}/cron/richard"
+
+mkdir -p -- "$dest"
+
+# Create the temporary file in the destination filesystem
+# so that the final rename is atomic.
+tempfile="$(mktemp "$dest/.crontab.txt.XXXXXXXX")"
+trap 'rm -f -- "$tempfile"' EXIT
+
+crontab -l >"$tempfile"
+
+if [[ ! -f "$dest/crontab.txt" ]] || ! cmp -s -- "$tempfile" "$dest/crontab.txt"; then
+    chmod 600 "$tempfile"
+    mv -f -- "$tempfile" "$dest/crontab.txt"
+    echo "Updated $dest/crontab.txt"
+else
+    echo "Crontab backup is already up to date"
+fi

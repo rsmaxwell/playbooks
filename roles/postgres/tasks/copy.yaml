@@ -1,0 +1,58 @@
+---
+
+
+- name: postgres:copy | Create project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ projects_dir }}"
+    - "{{ postgres_project_dir }}"
+    - "{{ postgres_project_dir }}/scripts"
+    - "{{ postgres_project_dir }}/config"
+    - "{{ postgres_project_dir }}/data"
+    - "{{ postgres_project_dir }}/log"
+    - "{{ postgres_project_dir }}/test"
+
+
+
+- name: postgres:copy | Synchronize files
+  ansible.posix.synchronize:
+    src: "sync/"
+    dest: "{{ postgres_project_dir }}/"
+    rsync_opts:
+      - "--omit-dir-times"
+  register: result
+
+- name: postgres:copy | Debug sync output
+  ansible.builtin.debug:
+    var: result.stdout_lines
+
+
+
+- name: postgres:copy | Template files
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "{{ postgres_project_dir }}/{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "compose.yaml", mode: "0664" }
+    - { path: ".env", mode: "0644" }
+    - { path: "scripts/start.sh", mode: '0744' }
+    - { path: "scripts/stop.sh", mode: '0744' }
+    - { path: "test/values.txt", mode: "0664" }
+
+
+
+
+- name: postgres:copy | Install Postgres systemd unit
+  become: true
+  ansible.builtin.template:
+    src: "compose/postgres-compose.service.j2"
+    dest: "/etc/systemd/system/postgres-compose.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart systemd
+    - Restart infrastructure stack

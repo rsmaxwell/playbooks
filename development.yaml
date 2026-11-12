@@ -1,0 +1,9 @@
+---
+- hosts: development
+
+  vars:
+    maven_settings: "{{ lookup('file', 'settings.xml') }}"
+
+  roles:
+    - name: development
+

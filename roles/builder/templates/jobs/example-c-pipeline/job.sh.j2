@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# The Jenkins job to update (for multibranch, include branch, e.g. "example-c-pipeline/linux_amd64")
+export JOB_FULL_NAME="example-c-pipeline/linux_amd64"
+
+# Maven coordinates + repo
+export DEP_GROUP="com.rsmaxwell.example"
+export DEP_ARTIFACT="example-c_linux_amd64"
+export ARCHIVA_REPO_URL="{{ mavenRepositoryBaseURL }}/releases"
+
+# How to reach Jenkins CLI (in the style: ssh ${host} groovy =)
+export JENKINS_CLI_SSH_HOST="admin-at-jenkins-at-pluto"
+
+# Path to scripts (same dir as this script by default)
+export SCRIPT_DIR="/home/richard/projects/builder/scripts"
+
+
+
+UPDATE_SCRIPT="${SCRIPT_DIR}/update-next-jenkins-BuildNumber.sh"
+set +e
+latest_version="$("$UPDATE_SCRIPT")"
+rc=$?
+set -e
+
+echo "latest_version=$latest_version rc=$rc"
+

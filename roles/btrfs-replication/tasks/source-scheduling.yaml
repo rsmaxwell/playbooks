@@ -1,0 +1,71 @@
+---
+# 0045-FEAT phase: Guard legacy transports and manage source push units and timer.
+- name: Native Btrfs | Require simplified runtime installation before service cutover
+  ansible.builtin.assert:
+    that:
+      - btrfs_simplified_replication_install_enabled | bool
+    fail_msg: Simplified replication service cannot run unless its runtime is installed
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - btrfs_simplified_replication_active_enabled | bool
+  tags: [native-btrfs, scheduling]
+
+# Step 11.4: the source owns one observable off-site schedule. Installation is
+# harmless; activation is explicit and remains false by default.
+- name: Native Btrfs | Install source-initiated push service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - btrfs-native-push.service
+    - btrfs-native-push.timer
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs, scheduling]
+
+- name: Native Btrfs | Check for active legacy rsync off-site phase before scheduling native push
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    if [ ! -f /root/scripts/backup/backup.sh ]; then exit 1; fi;
+    grep -Eq '^[[:space:]]*\([[:space:]]*cd[[:space:]]+remote[[:space:]]*&&[[:space:]]*\./backup\.sh[[:space:]]*\)'
+    /root/scripts/backup/backup.sh
+  args:
+    executable: /bin/bash
+  register: btrfs_native_legacy_rsync_phase
+  changed_when: false
+  check_mode: false
+  failed_when: btrfs_native_legacy_rsync_phase.rc not in [0, 1]
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - btrfs_native_push_schedule_enabled | bool
+  tags: [native-btrfs, scheduling]
+
+- name: Native Btrfs | Refuse dual off-site transports
+  ansible.builtin.assert:
+    that:
+      - btrfs_native_legacy_rsync_phase.rc == 1
+    fail_msg: >-
+      Refusing to enable btrfs-native-push.timer while the rendered mars root backup
+      wrapper still invokes the historical remote rsync phase. Deploy backup-collection with
+      legacy_remote_rsync_push_enabled=false first.
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - btrfs_native_push_schedule_enabled | bool
+  tags: [native-btrfs, scheduling]
+
+- name: Native Btrfs | Apply explicit push schedule state
+  ansible.builtin.systemd:
+    name: btrfs-native-push.timer
+    enabled: "{{ btrfs_native_push_schedule_enabled | bool }}"
+    state: "{{ 'started' if (btrfs_native_push_schedule_enabled | bool) else 'stopped' }}"
+    daemon_reload: true
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs, scheduling]
+
+# Advisory, unprivileged receiver planning uses the common manager's bucket
+# algorithm but cannot read the protected 0600 manager configuration.

@@ -1,0 +1,23 @@
+---
+
+- name: install utilities
+  ansible.builtin.import_tasks: utilities.yaml
+  tags:
+    - utils
+
+- name: copy files
+  ansible.builtin.import_tasks: copy.yaml
+  tags:
+    - copy
+
+- name: install gradle
+  ansible.builtin.import_tasks: gradle.yaml
+  tags:
+    - gradle
+
+
+- name: setup compose
+  ansible.builtin.import_tasks: compose.yaml
+  tags:
+    - compose
+

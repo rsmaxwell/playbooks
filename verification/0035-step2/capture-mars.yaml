@@ -1,0 +1,58 @@
+---
+- name: 0035 Step 2 | Preserve and verify existing mars source snapshot manager
+  hosts: mars
+  gather_facts: false
+  become: true
+  tasks:
+    - name: Step 2 | Inspect existing source, manager, immutable sets and replication holds (read-only)
+      ansible.builtin.shell: |
+        set -u
+        echo '=== filesystem ==='
+        findmnt -T /media/usb/@data/backup -o TARGET,SOURCE,FSTYPE,UUID
+        echo '=== source subvolume ==='
+        btrfs subvolume show /media/usb/@data
+        echo '=== nested subvolumes inside source (inspect send scope) ==='
+        btrfs subvolume list -o /media/usb/@data || true
+        echo '=== installed manager and config hashes ==='
+        sha256sum /usr/local/sbin/btrfs-snapshot-manager /etc/btrfs-snapshot-manager.json
+        echo '=== manager configuration ==='
+        cat /etc/btrfs-snapshot-manager.json
+        echo '=== manager status ==='
+        /usr/local/sbin/btrfs-snapshot-manager --config /etc/btrfs-snapshot-manager.json status
+        echo '=== managed snapshot inventory ==='
+        /usr/local/sbin/btrfs-snapshot-manager --config /etc/btrfs-snapshot-manager.json list
+        echo '=== checkpoint and replication protection ==='
+        for f in /media/usb/@snapshots/.checkpoint-holds.json /media/usb/@snapshots/.replication-protection.json; do
+          echo "--- $f ---"
+          if [ -f "$f" ]; then cat "$f"; else echo 'MISSING'; fi
+        done
+        echo '=== read-only snapshot flags and UUIDs (latest and protected) ==='
+        python3 - <<'PYINNER'
+        import json, pathlib, re, subprocess
+        base=pathlib.Path('/media/usb/@snapshots')
+        stamps=sorted([x.name for x in (base/'@data').iterdir() if re.fullmatch(r'\d{8}-\d{6}Z',x.name)])
+        pins=json.loads((base/'.replication-protection.json').read_text()).get('protected',{})
+        holds=json.loads((base/'.checkpoint-holds.json').read_text()).get('holds',{})
+        selected=sorted(set(stamps[-2:]) | set(pins) | set(holds))
+        for stamp in selected:
+          for name in ('root','@data'):
+            path=base/name/stamp
+            if not path.exists():
+              print(f'MISSING {name} {stamp}')
+              continue
+            print(f'--- {name} {stamp} ---')
+            subprocess.run(['btrfs','property','get','-ts',str(path),'ro'],check=False)
+            subprocess.run(['btrfs','subvolume','show',str(path)],check=False)
+        PYINNER
+        echo '=== timer schedule and state ==='
+        systemctl show btrfs-snapshot-create.timer btrfs-snapshot-prune.timer -p Id -p UnitFileState -p ActiveState -p NextElapseUSecRealtime -p LastTriggerUSec --no-pager
+        echo '=== writer lock and transfer process inventory ==='
+        ls -ld /media/usb/@data/backup/.btrfs-snapshot-writer.lock /run/lock/btrfs-snapshot-manager.lock 2>&1 || true
+        ps -eo pid,ppid,stat,args | grep -E '[b]trfs-native-push|[b]trfs send|[b]trfs receive|[d]iaries-pull' || true
+      args:
+        executable: /bin/bash
+      register: mars_step2
+      changed_when: false
+    - name: Step 2 | Print mars preservation evidence
+      ansible.builtin.debug:
+        var: mars_step2.stdout_lines

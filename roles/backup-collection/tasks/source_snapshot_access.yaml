@@ -1,0 +1,71 @@
+---
+# The Btrfs read-only snapshot cannot be modified in place. Future snapshots
+# inherit the ACLs applied here to the writable @data source.
+- name: source snapshot access | Validate explicit opt-in and fixed source boundary
+  ansible.builtin.assert:
+    that:
+      - diaries_snapshot_source_acl_path == '/media/usb/@data/backup'
+      - diaries_snapshot_source_acl_user is string
+      - diaries_snapshot_source_acl_user | length > 0
+      - diaries_snapshot_source_acl_user != 'root'
+    fail_msg: "Refusing source ACL change outside the fixed mars backup source"
+
+- name: source snapshot access | Confirm writable Btrfs source is a real directory
+  ansible.builtin.stat:
+    path: "{{ diaries_snapshot_source_acl_path }}"
+    follow: false
+  register: diaries_snapshot_acl_source_stat
+
+- name: source snapshot access | Refuse missing or redirected source
+  ansible.builtin.assert:
+    that:
+      - diaries_snapshot_acl_source_stat.stat.isdir | default(false)
+      - not diaries_snapshot_acl_source_stat.stat.islnk | default(false)
+
+- name: source snapshot access | Install ACL utilities
+  ansible.builtin.apt:
+    name: acl
+    state: present
+  become: true
+
+# Read/traverse existing files and directories. No write permissions granted.
+- name: source snapshot access | Read-only ACL for existing backup source tree
+  ansible.posix.acl:
+    path: "{{ diaries_snapshot_source_acl_path }}"
+    entity: "{{ diaries_snapshot_source_acl_user }}"
+    etype: user
+    permissions: rX
+    state: present
+    recursive: true
+    recalculate_mask: mask
+  become: true
+
+# New entries created by later source backup jobs should inherit read/traverse.
+# Only directories can have default ACLs; find is deliberately constrained to
+# the fixed writable backup source and excludes Btrfs snapshot roots.
+- name: source snapshot access | Configure default ACLs on source directories
+  ansible.builtin.shell: |
+    set -eu
+    find {{ diaries_snapshot_source_acl_path | quote }} -xdev -type d -exec setfacl -m {{ ('d:u:' ~ diaries_snapshot_source_acl_user ~ ':rX') | quote }} -- '{}' +
+  args:
+    executable: /bin/bash
+  become: true
+  changed_when: true
+
+- name: source snapshot access | Confirm source marker readable as transfer account
+  ansible.builtin.command:
+    argv:
+      - test
+      - -r
+      - "{{ diaries_snapshot_source_acl_path }}/.diaries-snapshot-verified.json"
+  become: true
+  become_user: "{{ diaries_snapshot_source_acl_user }}"
+  changed_when: false
+
+- name: source snapshot access | Explain immutable snapshot acceptance
+  ansible.builtin.debug:
+    msg: >-
+      Future read-only snapshots of @data inherit source ACLs. Existing
+      read-only snapshots such as 20261009-170001Z remain unchanged;
+      create a NEW timestamp snapshot after this task and verify readability
+      before initiating the next source-side btrfs-native-push.

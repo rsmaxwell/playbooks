@@ -1,0 +1,10 @@
+---
+- hosts: builder
+
+  vars:
+    public_key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+    maven_settings: "{{ lookup('file', 'settings.xml') }}"
+
+  roles:
+    - name: builder
+

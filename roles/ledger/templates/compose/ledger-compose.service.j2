@@ -1,0 +1,21 @@
+[Unit]
+Description=The Ledger application stack
+{% if ledger_frontend_mode == 'shared' %}
+After=docker.service {{ ledger_shared_frontend_systemd_unit }}
+Requires=docker.service {{ ledger_shared_frontend_systemd_unit }}
+{% else %}
+After=docker.service
+Requires=docker.service
+{% endif %}
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+Group=docker
+WorkingDirectory={{ ledger_project_dir }}
+ExecStart={{ ledger_project_dir }}/scripts/start.sh
+ExecStop={{ ledger_project_dir }}/scripts/stop.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

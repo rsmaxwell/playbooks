@@ -1,0 +1,60 @@
+---
+# 0036 Gate 3: opt-in independent host CIFS mount; does not alter Docker volume.
+- name: diaries:0036 | Validate host mount inputs
+  ansible.builtin.assert:
+    that:
+      - diaries_host_nas_mount_root is match('^/[^\n]+$')
+      - diaries_host_nas_mount_root != '/'
+      - diaries_host_nas_mount_root is not search('\.\.')
+      - diaries_host_nas_host | length > 0
+      - diaries_host_nas_share | length > 0
+      - diaries_host_nas_username | length > 0
+      - diaries_host_nas_password | length > 0
+      - diaries_host_nas_content_path | length > 0
+      - diaries_files_dir | length > 0
+    fail_msg: '0036 host NAS mount configuration missing/unsafe; no mount changes performed'
+  no_log: true
+
+- name: diaries:0036 | Install CIFS credentials directory
+  ansible.builtin.file:
+    path: /etc/diaries
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  become: true
+
+- name: diaries:0036 | Install dedicated CIFS credentials
+  ansible.builtin.template:
+    src: 0036-nas-credentials.j2
+    dest: /etc/diaries/0036-nas-credentials
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  no_log: true
+
+- name: diaries:0036 | Check host mountpoint
+  ansible.builtin.stat:
+    path: "{{ diaries_host_nas_mount_root }}"
+  register: diaries_host_nas_mountpoint
+
+- name: diaries:0036 | Create host mountpoint if absent
+  ansible.builtin.file:
+    path: "{{ diaries_host_nas_mount_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+  when: not diaries_host_nas_mountpoint.stat.exists
+  become: true
+
+- name: diaries:0036 | Mount host NAS share read-only
+  ansible.posix.mount:
+    path: "{{ diaries_host_nas_mount_root }}"
+    src: "//{{ diaries_host_nas_host }}/{{ diaries_host_nas_share }}"
+    fstype: cifs
+    opts: "ro,credentials=/etc/diaries/0036-nas-credentials,vers=3.0,nosuid,nodev,noexec,uid=1000,gid=1000,dir_mode=0500,file_mode=0400"
+    state: mounted
+  become: true
+  no_log: true

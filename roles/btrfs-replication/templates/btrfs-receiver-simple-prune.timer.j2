@@ -1,0 +1,10 @@
+[Unit]
+Description=0040 Simplified Btrfs receiver retention timer
+
+[Timer]
+OnCalendar={{ btrfs_simplified_receiver_prune_on_calendar }}
+Persistent=false
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

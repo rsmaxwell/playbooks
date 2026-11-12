@@ -1,0 +1,34 @@
+---
+
+
+
+
+- name: infrastructure | configure firewall
+  ansible.builtin.import_tasks: firewall.yaml
+  become: yes
+  tags:
+    - firewall
+
+- name: infrastructure | install utilities
+  import_tasks: utilities.yaml
+  tags:
+    - utils
+
+- name: infrastructure | copy files
+  ansible.builtin.import_tasks: copy.yaml
+  tags:
+    - copy
+
+- name: infrastructure | nginx
+  ansible.builtin.import_tasks: nginx.yaml
+  tags:
+    - nginx
+
+
+- name: infrastructure | setup compose
+  ansible.builtin.import_tasks: compose.yaml
+  tags:
+    - compose
+
+
+

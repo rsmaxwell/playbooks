@@ -1,0 +1,31 @@
+---
+
+- name: ledger:firewall | Set OpenSSH port in UFW profile
+  ansible.builtin.lineinfile:
+    path: /etc/ufw/applications.d/openssh-server
+    regexp: '^ports='
+    line: "ports={{ ansible_port }}/tcp"
+
+- name: ledger:firewall | Reload OpenSSH UFW application definition
+  ansible.builtin.command:
+    cmd: ufw app update OpenSSH
+  changed_when: false
+
+- name: ledger:firewall | Set default incoming policy
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: ledger:firewall | Set default outgoing policy
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: ledger:firewall | Allow SSH
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: ledger:firewall | Enable UFW
+  community.general.ufw:
+    state: enabled

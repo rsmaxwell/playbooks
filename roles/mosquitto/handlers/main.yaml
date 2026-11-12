@@ -1,0 +1,16 @@
+---
+
+- name: mosquitto:handler | Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Restart systemd
+
+
+- name: mosquitto:handler | Enable and start mosquitto compose service
+  become: true
+  ansible.builtin.systemd:
+    name: mosquitto-compose.service
+    enabled: true
+    state: started
+  listen: Restart infrastructure stack

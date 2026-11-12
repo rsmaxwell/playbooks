@@ -1,0 +1,54 @@
+---
+
+# Leave empty to place the managed snapshot repository at <btrfs_filesystem_path>/@snapshots.
+btrfs_snapshot_root: ""
+
+btrfs_snapshot_manager_path: /usr/local/sbin/btrfs-snapshot-manager
+btrfs_snapshot_history_path: /usr/local/sbin/diaries-backup-history
+btrfs_snapshot_extent_tool_path: /usr/local/sbin/btrfs-extent-sharing
+btrfs_snapshot_manifest_tool_path: /usr/local/lib/diaries-backup/complete-dataset-manifest.py
+btrfs_snapshot_manager_config_path: /etc/btrfs-snapshot-manager.json
+btrfs_snapshot_manager_lock_path: /run/lock/btrfs-snapshot-manager.lock
+
+# Native scheduling is enabled only by explicit host activation.
+btrfs_snapshot_activation_enabled: false
+# Independent opt-in: source pruning stays paused during an unaccepted
+# catch-up even when hourly snapshot creation is enabled.
+btrfs_snapshot_prune_activation_enabled: false
+# Hard upper bound on deletions by each scheduled source-prune service run.
+btrfs_snapshot_prune_max_delete: 10
+
+# Optional whole-backup writer/snapshot coordination. For 0034/0035 integration
+# these are enabled per host by the backup-collection / btrfs-replication roles.
+btrfs_snapshot_writer_lock_path: ""
+btrfs_snapshot_require_verified_diaries: false
+btrfs_snapshot_diaries_source_name: "@data"
+btrfs_snapshot_diaries_relative_path: ""
+btrfs_snapshot_diaries_marker_relative_path: ""
+
+# Each source independently controls completeness, creation and routine pruning.
+# Omitted flags default true for compatibility. Do not activate the mars
+# @data-only cutover until the separately approved migration gate.
+btrfs_snapshot_sources:
+  - name: root
+    path: "{{ btrfs_filesystem_path }}"
+    required: true
+    creation: true
+    prune: true
+  - name: "@data"
+    path: "{{ btrfs_subvolume_path }}"
+    required: true
+    creation: true
+    prune: true
+
+# Initial GFS-style policy. Retention is applied to complete same-timestamp sets
+# across all configured sources; incomplete sets block pruning for safety.
+btrfs_snapshot_retention_hourly: 48
+btrfs_snapshot_retention_daily: 14
+btrfs_snapshot_retention_weekly: 12
+btrfs_snapshot_retention_monthly: 24
+btrfs_snapshot_retention_yearly: 5
+btrfs_snapshot_minimum_age_minutes: 30
+
+btrfs_snapshot_create_on_calendar: "*-*-* *:00:00"
+btrfs_snapshot_prune_on_calendar: "*-*-* *:15:00"

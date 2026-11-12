@@ -1,0 +1,100 @@
+{
+  "schema": "0047-collection-source-modes-v1",
+  "evidence": "0045-FEAT Step 1 accepted static installation, baseline-20261111-111819Z, mars",
+  "note": "Git does not record group-write or directory mode; restore exact per-path modes in the mango working copy before synchronize. rsync itself applies no --chmod.",
+  "entries": [
+    {
+      "path": "files/backup",
+      "destination": "/home/richard/scripts/backup",
+      "kind": "directory",
+      "mode": "0750"
+    },
+    {
+      "path": "files/backup/home",
+      "destination": "/home/richard/scripts/backup/home",
+      "kind": "directory",
+      "mode": "0750"
+    },
+    {
+      "path": "files/backup-machine",
+      "destination": "/root/scripts/backup",
+      "kind": "directory",
+      "mode": "0750"
+    },
+    {
+      "path": "files/backup-machine/home",
+      "destination": "/root/scripts/backup/home",
+      "kind": "directory",
+      "mode": "0750"
+    },
+    {
+      "path": "files/backup-machine/remote",
+      "destination": "/root/scripts/backup/remote",
+      "kind": "directory",
+      "mode": "0750"
+    },
+    {
+      "path": "files/backup/home/excludes-1",
+      "destination": "/home/richard/scripts/backup/home/excludes-1",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "7225808ccc8c9c684ae1098d0ea46557c49419342ddc5d88af004413cb27e1d9"
+    },
+    {
+      "path": "files/backup/home/excludes-2",
+      "destination": "/home/richard/scripts/backup/home/excludes-2",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "files/backup/home/includes",
+      "destination": "/home/richard/scripts/backup/home/includes",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "files/backup-machine/home/excludes-1",
+      "destination": "/root/scripts/backup/home/excludes-1",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "82e17319c7c4ee418ebfb23c94b3327e6c16614fa694a42154efeda9d1107b4b"
+    },
+    {
+      "path": "files/backup-machine/home/excludes-2",
+      "destination": "/root/scripts/backup/home/excludes-2",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "files/backup-machine/home/includes",
+      "destination": "/root/scripts/backup/home/includes",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "files/backup-machine/remote/excludes-1",
+      "destination": "/root/scripts/backup/remote/excludes-1",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "9898acd1777ad4ac07242209c2ce351578531596fb9f85d3e2abc6a9dd8e241b"
+    },
+    {
+      "path": "files/backup-machine/remote/excludes-2",
+      "destination": "/root/scripts/backup/remote/excludes-2",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "files/backup-machine/remote/includes",
+      "destination": "/root/scripts/backup/remote/includes",
+      "kind": "file",
+      "mode": "0664",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

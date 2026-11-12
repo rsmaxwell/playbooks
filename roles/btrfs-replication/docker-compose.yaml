@@ -1,0 +1,52 @@
+version: '3.4'
+
+services:
+
+  nginx:
+    image: nginx
+    restart: unless-stopped
+    volumes:
+      - ./files/nginx/www:/var/www/nginx
+      - ./data/nginx/conf:/etc/nginx/conf.d
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    ports:
+      - "80:80"
+      - "443:443"
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+
+  archiva:
+    image: xetusoss/archiva:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/archiva:/archiva-data
+
+
+
+  mosquitto:
+    image: eclipse-mosquitto
+    restart: unless-stopped
+    volumes:
+      - ./files/mosquitto/scripts:/mosquitto/scripts
+      - ./files/mosquitto/config:/mosquitto/config
+      - ./data/mosquitto/data:/mosquitto/data
+      - ./data/mosquitto/log:/mosquitto/log
+      - ./data/certbot/conf:/etc/letsencrypt
+    ports:
+      - "1883:1883"
+      - "8883:8883"
+      - "9001:9001"
+    command: "mosquitto -c /mosquitto/config/mosquitto.conf"
+#    command: "tail -f /dev/null"

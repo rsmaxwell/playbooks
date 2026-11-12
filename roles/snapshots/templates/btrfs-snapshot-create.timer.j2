@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule timestamp-named Btrfs snapshots
+
+[Timer]
+OnCalendar={{ btrfs_snapshot_create_on_calendar }}
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

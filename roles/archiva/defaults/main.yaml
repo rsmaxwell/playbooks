@@ -1,0 +1,19 @@
+
+projects_dir: "{{ ansible_facts['env']['HOME'] }}/projects"
+
+infrastructure_project_dir: "{{ projects_dir }}/infrastructure"
+archiva_project_dir:        "{{ projects_dir }}/archiva"
+
+archiva_scripts_dir:        "{{ archiva_project_dir }}/scripts"
+archiva_conf:               "{{ archiva_project_dir }}/data/conf"
+
+# Shared infrastructure Nginx route lifecycle.
+# The persistent configuration is installed under config/files by Ansible.
+# start.sh creates the relative symlink under conf.d/locations and stop.sh removes it.
+archiva_nginx_config_dir:              "{{ infrastructure_project_dir }}/nginx/config"
+archiva_nginx_source_file:             "{{ archiva_nginx_config_dir }}/files/archiva.conf"
+archiva_nginx_location_file:           "{{ archiva_nginx_config_dir }}/conf.d/locations/archiva.conf"
+archiva_nginx_location_symlink_target: "../../files/archiva.conf"
+
+# Shared infrastructure Docker network.
+archiva_shared_network_name: "{{ shared_network_name | default('infrastructure_shared') }}"

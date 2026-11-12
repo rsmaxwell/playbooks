@@ -1,0 +1,18 @@
+---
+
+
+- name: diaries:utilities | Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - cifs-utils
+      - smbclient
+      - curl
+      - gnupg
+      - python3-lxml
+      - jq
+      - tree
+      - zip
+      - unzip
+    state: present
+    update_cache: true
+  become: true

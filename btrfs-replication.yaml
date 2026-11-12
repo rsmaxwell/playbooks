@@ -1,0 +1,15 @@
+---
+
+# btrfs-replication configures both endpoints. Native Btrfs deployment. Never starts a transfer or snapshot directly; the Step 11.4 source timer is enabled only by explicit inventory opt-in.
+
+- name: Configure native Btrfs replication endpoints
+  hosts: local_backup:remote_backup
+  gather_facts: false
+
+  tasks:
+    - name: Configure native Btrfs endpoint
+      ansible.builtin.include_role:
+        name: btrfs-replication
+        tasks_from: native.yaml
+      tags: [always]
+

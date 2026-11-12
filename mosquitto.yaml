@@ -1,0 +1,6 @@
+---
+
+- hosts: mosquitto
+
+  roles:
+    - role: mosquitto

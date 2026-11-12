@@ -1,0 +1,36 @@
+user diaries-client
+topic write diaries/rpc/request
+pattern read diaries/rpc/%c/response
+topic read diaries/diaries/#
+topic read diaries/pages/#
+topic read diaries/fragments/#
+topic read diaries/marquees/#
+topic read diaries/images/+
+topic read diaries/dates/#
+
+user diaries-responder
+topic read diaries/rpc/request
+topic write diaries/rpc/+/response
+topic readwrite diaries-sync/#
+topic readwrite diaries/diaries/#
+topic readwrite diaries/pages/#
+topic readwrite diaries/fragments/#
+topic readwrite diaries/marquees/#
+topic readwrite diaries/dates/#
+topic readwrite diaries/people/#
+topic readwrite diaries/roles/#
+topic readwrite diaries/images/+
+
+user diaries-web
+topic deny diaries/rpc/#
+topic read diaries/diaries/+
+topic read diaries/pages/+
+topic read diaries/fragments/+
+topic read diaries/marquees/+
+topic read diaries/images/+
+
+user diaries-health
+topic read $SYS/broker/version
+
+user admin
+topic read diaries/#

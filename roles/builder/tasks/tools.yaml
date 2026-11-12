@@ -1,0 +1,112 @@
+---
+
+
+
+
+- name: Update the PATH for GOLANG
+  ansible.builtin.lineinfile:
+    path: .bashrc
+    line: export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
+    create: yes
+  register: result
+
+
+
+
+
+
+
+- name: Is kind already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/kind
+  register: st
+
+- name: Install kind
+  ansible.builtin.uri:
+    url: https://kind.sigs.k8s.io/dl/v0.20.0/kind-Linux-amd64
+    dest: /usr/local/bin/kind
+  become: yes
+  when: st.stat.exists == False 
+
+- name: Set file permissions
+  ansible.builtin.file:
+    path: /usr/local/bin/kind
+    mode: '0755'
+  become: yes
+
+
+
+
+
+
+
+- name: Is kubectl already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/kubectl
+  register: st
+
+- name: Find the current stable version
+  ansible.builtin.uri:
+    url: https://dl.k8s.io/release/stable.txt
+    dest: /tmp
+  become: yes
+  when: st.stat.exists == False 
+
+- name: Get the version
+  ansible.builtin.slurp: 
+    src: "/tmp/stable.txt"
+  register: stable
+  when: st.stat.exists == False 
+
+- ansible.builtin.set_fact:
+    version: "{{ stable['content'] | b64decode }}"
+  when: st.stat.exists == False 
+
+- name: Install kubectl
+  ansible.builtin.uri:
+    url: https://dl.k8s.io/release/{{ version }}/bin/linux/amd64/kubectl
+    dest: /usr/local/bin/kubectl
+  become: yes
+  when: st.stat.exists == False 
+
+- name: Set file permissions
+  ansible.builtin.file:
+    path: /usr/local/bin/kubectl
+    mode: '0755'
+  become: yes
+  when: st.stat.exists == False 
+
+
+
+
+
+
+
+
+- name: Is helm already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: st
+
+- name: Download helm 
+  ansible.builtin.uri:
+    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    dest: /tmp/get_helm.sh
+  become: yes
+  when: st.stat.exists == False
+
+- name: Set file permissions
+  ansible.builtin.file:
+    path: /tmp/get_helm.sh
+    mode: '0755'
+  become: yes
+  when: st.stat.exists == False
+
+- name: Install helm
+  ansible.builtin.command:
+    cmd: bash /tmp/get_helm.sh
+  become: yes
+  register: result
+  when: st.stat.exists == False
+
+

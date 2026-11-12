@@ -1,0 +1,31 @@
+---
+# 0045-FEAT phase: Install receiver configuration and transaction lock.
+- name: Native Btrfs | Install receiver-mode read-only config (opt in)
+  ansible.builtin.template:
+    src: btrfs-receiver-manager.json.j2
+    dest: /etc/btrfs-snapshot-manager.json
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+  tags: [native-btrfs, receiver-manager]
+
+- name: Native Btrfs | Provision stable transaction lock
+  ansible.builtin.file:
+    path: /@data/mars-received/.replication-state/writer.lock
+    state: touch
+    access_time: preserve
+    modification_time: preserve
+    owner: '{{ btrfs_native_operator }}'
+    group: '{{ btrfs_native_operator }}'
+    mode: '0600'
+  become: true
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [native-btrfs]
+
+# 0042: old native-push, receiver acceptance and Stage B gateway installers
+# are gone. Only btrfs-simplified-replication is installed below.
+# Remove only the installed obsolete pull entrypoint; no data/snapshot deletion.

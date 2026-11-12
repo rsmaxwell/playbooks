@@ -1,0 +1,16 @@
+---
+
+- name: postgres:handler | Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Restart systemd
+
+
+- name: postgres:handler | Enable and start postgres compose service
+  become: true
+  ansible.builtin.systemd:
+    name: postgres-compose.service
+    enabled: true
+    state: started
+  listen: Restart infrastructure stack

@@ -1,0 +1,10 @@
+server {
+    listen 80;
+
+    server_name {{ ledger_server_name }};
+    server_tokens off;
+
+    resolver 127.0.0.11 valid=30s ipv6=off;
+
+    include /etc/nginx/conf.d/locations/*.conf;
+}

@@ -1,0 +1,17 @@
+---
+
+- name: check the installed version of gradle
+  ansible.builtin.shell:
+    cmd: gradle -v | grep Gradle | awk '{print $2}'
+  changed_when: false
+  register: result
+
+- set_fact:
+    installed_gradle_version: "{{ gradle_version }}"
+
+
+
+- name: install gradle
+  import_tasks: install-gradle.yaml
+  when: installed_gradle_version != gradle_version
+

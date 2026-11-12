@@ -1,0 +1,12 @@
+[Unit]
+Description=Push newest accepted-lineage Btrfs snapshot to off-site backup
+Wants=network-online.target
+After=network-online.target
+ConditionFileIsExecutable=/usr/local/bin/btrfs-simplified-replication
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/bin/btrfs-simplified-replication sender cycle
+TimeoutStartSec={{ btrfs_native_push_timeout_start_sec }}

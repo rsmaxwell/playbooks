@@ -1,0 +1,161 @@
+---
+# 0034 Step 6: intentionally isolated from the diaries/local-backup/snapshots roles.
+# Default: no writes. Opt in with -e step6_install=true.
+# Installation never triggers a transfer, cron, systemd or snapshot action.
+- name: Step 6 pluto helper installation and non-mutating preflight
+  hosts: pluto
+  gather_facts: false
+  vars:
+    step6_install: false
+    step6_pluto_publisher_root: /home/richard/projects/diaries/data/dataset-backups/production/diaries-backup
+    step6_pluto_script_dir: /home/richard/projects/diaries/scripts
+  tasks:
+    - name: Inspect source publisher and manifest availability
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ step6_pluto_script_dir }}/complete-dataset-publisher.py"
+        - "{{ step6_pluto_script_dir }}/complete-dataset-manifest.py"
+      register: pluto_before
+    - name: Report existing tool availability
+      ansible.builtin.debug:
+        msg: "pluto helper {{ item.item }} exists={{ item.stat.exists }}"
+      loop: "{{ pluto_before.results }}"
+    - name: Install publisher only when explicitly opted in
+      ansible.builtin.copy:
+        src: ../../roles/diaries/files/sync/scripts/complete-dataset-publisher.py
+        dest: "{{ step6_pluto_script_dir }}/complete-dataset-publisher.py"
+        mode: '0755'
+        owner: richard
+        group: richard
+      become: true
+      when: step6_install | bool
+    - name: Check pluto publisher preflight (read-only)
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ step6_pluto_script_dir }}/complete-dataset-publisher.py"
+          - --published-root
+          - "{{ step6_pluto_publisher_root }}"
+          - preflight
+      changed_when: false
+      when: step6_install | bool
+
+- name: Step 6 mars helper installation and non-mutating preflight
+  hosts: mars
+  gather_facts: false
+  vars:
+    step6_install: false
+    step6_mars_scripts: /home/richard/scripts/backup
+    step6_cleanup_legacy_root: false
+    step6_legacy_root_scripts: /root/scripts/backup
+    step6_mars_dest: /media/usb/@data/backup/pluto
+  tasks:
+    - name: Check Btrfs destination filesystem
+      ansible.builtin.command:
+        argv: [findmnt, -T, /media/usb/@data/backup, -n, -o, FSTYPE]
+      register: mars_fs
+      changed_when: false
+    - name: Require Btrfs storage
+      ansible.builtin.assert:
+        that: mars_fs.stdout | trim == 'btrfs'
+    - name: Inspect optional pull helper
+      ansible.builtin.stat:
+        path: "{{ step6_mars_scripts }}/diaries-pull.py"
+      become: true
+      register: mars_pull_before
+    - name: Report installed helper state
+      ansible.builtin.debug:
+        msg: "mars pull helper exists={{ mars_pull_before.stat.exists }}; installation opt-in={{ step6_install }}"
+    - name: Ensure destination parent exists only with explicit opt-in
+      ansible.builtin.file:
+        path: "{{ step6_mars_dest }}"
+        state: directory
+        owner: richard
+        group: richard
+        mode: '0750'
+      become: true
+      when: step6_install | bool
+    - name: Ensure richard-owned script directory exists when installing
+      ansible.builtin.file:
+        path: "{{ step6_mars_scripts }}"
+        state: directory
+        owner: richard
+        group: richard
+        mode: '0750'
+      become: true
+      when: step6_install | bool
+    - name: Install opt-in pull tool without adding a schedule
+      ansible.builtin.copy:
+        src: ../../roles/local-backup/files/backup-machine/diaries-pull.py
+        dest: "{{ step6_mars_scripts }}/diaries-pull.py"
+        owner: richard
+        group: richard
+        mode: '0755'
+      become: true
+      when: step6_install | bool
+    - name: Install receiving publisher without scheduling it
+      ansible.builtin.copy:
+        src: ../../roles/diaries/files/sync/scripts/complete-dataset-publisher.py
+        dest: "{{ step6_mars_scripts }}/complete-dataset-publisher.py"
+        owner: richard
+        group: richard
+        mode: '0755'
+      become: true
+      when: step6_install | bool
+    - name: Install existing schema-2 manifest verifier
+      ansible.builtin.copy:
+        src: ../../roles/diaries/files/sync/scripts/complete-dataset-manifest.py
+        dest: "{{ step6_mars_scripts }}/complete-dataset-manifest.py"
+        owner: richard
+        group: richard
+        mode: '0755'
+      become: true
+      when: step6_install | bool
+    - name: Non-mutating receiving pull preflight (no rsync)
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ step6_mars_scripts }}/diaries-pull.py"
+          - --host
+          - pluto
+          - --source-parent
+          - /home/richard/projects/diaries/data/dataset-backups/production
+          - --destination-parent
+          - "{{ step6_mars_dest }}"
+          - --publisher
+          - "{{ step6_mars_scripts }}/complete-dataset-publisher.py"
+          - --manifest-tool
+          - "{{ step6_mars_scripts }}/complete-dataset-manifest.py"
+          - --preflight
+      become: true
+      become_user: richard
+      changed_when: false
+      when: step6_install | bool
+    - name: Verify replacement helpers are installed before optional legacy cleanup
+      ansible.builtin.stat:
+        path: "{{ step6_mars_scripts }}/{{ item }}"
+      loop:
+        - diaries-pull.py
+        - complete-dataset-publisher.py
+        - complete-dataset-manifest.py
+      register: step6_new_helpers
+      when: step6_install | bool and step6_cleanup_legacy_root | bool
+
+    - name: Require all replacement helpers before deleting former copies
+      ansible.builtin.assert:
+        that:
+          - step6_new_helpers.results | map(attribute='stat.exists') | min
+        fail_msg: "Replacement scripts missing; preserving root-installed copies"
+      when: step6_install | bool and step6_cleanup_legacy_root | bool
+
+    - name: Remove only the three obsolete root-installed Step 6 helpers
+      ansible.builtin.file:
+        path: "{{ step6_legacy_root_scripts }}/{{ item }}"
+        state: absent
+      loop:
+        - diaries-pull.py
+        - complete-dataset-publisher.py
+        - complete-dataset-manifest.py
+      become: true
+      when: step6_install | bool and step6_cleanup_legacy_root | bool

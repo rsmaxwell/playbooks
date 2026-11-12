@@ -1,0 +1,66 @@
+---
+# 0045-FEAT phase: Inspect, protect and provision timestamp snapshot roots.
+- name: snapshots | Resolve managed snapshot root
+  ansible.builtin.set_fact:
+    btrfs_snapshot_root_effective: >-
+      {{ btrfs_snapshot_root
+         if (btrfs_snapshot_root | length > 0)
+         else ((btrfs_filesystem_path | regex_replace('/+$', '')) ~ '/@snapshots') }}
+  tags:
+    - snapshots
+
+- name: snapshots | Inspect managed snapshot root
+  ansible.builtin.stat:
+    path: "{{ btrfs_snapshot_root_effective }}"
+  register: btrfs_snapshot_root_stat
+  tags:
+    - snapshots
+
+- name: snapshots | Verify existing snapshot root is a Btrfs subvolume
+  ansible.builtin.command:
+    argv:
+      - btrfs
+      - subvolume
+      - show
+      - "{{ btrfs_snapshot_root_effective }}"
+  register: btrfs_snapshot_root_show
+  changed_when: false
+  failed_when: false
+  when: btrfs_snapshot_root_stat.stat.exists
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Refuse a non-subvolume snapshot root
+  ansible.builtin.assert:
+    that:
+      - not btrfs_snapshot_root_stat.stat.exists or btrfs_snapshot_root_show.rc == 0
+    fail_msg: >-
+      {{ btrfs_snapshot_root_effective }} already exists but is not a Btrfs subvolume;
+      refusing to repurpose or delete it automatically.
+  tags:
+    - snapshots
+
+- name: snapshots | Create managed snapshot-root subvolume
+  ansible.builtin.command:
+    argv:
+      - btrfs
+      - subvolume
+      - create
+      - "{{ btrfs_snapshot_root_effective }}"
+  when: not btrfs_snapshot_root_stat.stat.exists
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Create per-source timestamp directories
+  ansible.builtin.file:
+    path: "{{ btrfs_snapshot_root_effective }}/{{ item.name }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop: "{{ btrfs_snapshot_sources }}"
+  become: true
+  tags:
+    - snapshots

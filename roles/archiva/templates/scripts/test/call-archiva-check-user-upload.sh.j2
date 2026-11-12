@@ -1,0 +1,8 @@
+#!/bin/bash
+set -u
+
+
+export archivaUrl={{mavenRepositoryBaseURL }}
+
+
+./archiva-check-user-upload.sh '{{ archiva_username }}' '{{ archiva_password }}' releases com.rsmaxwell.test permission-check 0.0.2

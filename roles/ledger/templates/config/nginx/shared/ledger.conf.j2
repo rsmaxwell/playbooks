@@ -1,0 +1,29 @@
+# Ledger routes for a shared infrastructure Nginx container.
+
+location /ledger/api/ {
+    access_log /var/log/nginx/ledger-api-access.log main;
+
+    set $ledger_server_upstream http://ledger-server:8080;
+    rewrite ^/ledger/api/(.*)$ /api/$1 break;
+    proxy_pass $ledger_server_upstream;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port  $server_port;
+}
+
+location /ledger/ {
+    set $ledger_client_upstream http://ledger-client:80;
+    rewrite ^/ledger/(.*)$ /$1 break;
+    proxy_pass $ledger_client_upstream;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Port  $server_port;
+}

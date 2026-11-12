@@ -1,0 +1,137 @@
+---
+# 0045-FEAT phase: Validate endpoint, protect source, provision receiver and remove retired sudoers.
+- name: Native Btrfs | Reject unsupported deployment host
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname in ['mars', 'backup']
+      - btrfs_native_endpoint_role in ['source', 'receiver']
+      - btrfs_native_operator == 'richard'
+      - btrfs_native_push_schedule_enabled is boolean
+      - btrfs_native_push_on_calendar is string
+      - (btrfs_native_push_on_calendar | length) > 0
+      - btrfs_native_push_timeout_start_sec is string
+      - btrfs_simplified_replication_install_enabled is boolean
+      - btrfs_simplified_replication_active_enabled is boolean
+      - not (btrfs_native_endpoint_role == 'source' and btrfs_native_push_schedule_enabled) or (btrfs_simplified_replication_install_enabled and btrfs_simplified_replication_active_enabled)
+      - (btrfs_native_push_timeout_start_sec | length) > 0
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Ensure privileged helper directory exists
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Initialize root-owned source protection state if missing
+  ansible.builtin.copy:
+    dest: /media/usb/@snapshots/.replication-protection.json
+    content: '{"schema":1,"protected":{}}'
+    owner: root
+    group: root
+    mode: '0600'
+    force: false
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Read existing 0035 manager configuration
+  ansible.builtin.slurp:
+    src: /etc/btrfs-snapshot-manager.json
+  register: btrfs_native_snapshot_manager_config
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Install replication-aware 0035 pruning manager
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/snapshots/files/btrfs-snapshot-manager.py'
+    dest: /usr/local/sbin/btrfs-snapshot-manager
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Activate fail-closed protection in existing 0035 config
+  ansible.builtin.copy:
+    dest: /etc/btrfs-snapshot-manager.json
+    content: >-
+      {{ ((btrfs_native_snapshot_manager_config.content | b64decode | from_json)
+          | combine({'replication_protection': {
+              'required': true,
+              'path': '/media/usb/@snapshots/.replication-protection.json'
+            }}, recursive=true)) | to_nice_json }}
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - >-
+      (btrfs_native_snapshot_manager_config.content | b64decode | from_json)
+      !=
+      ((btrfs_native_snapshot_manager_config.content | b64decode | from_json)
+       | combine({'replication_protection': {
+           'required': true,
+           'path': '/media/usb/@snapshots/.replication-protection.json'
+         }}, recursive=true))
+  tags: [native-btrfs]
+
+# 0042-FEAT: the obsolete native endpoint and sudoers must never return.
+# This removal is safe to repeat and does not touch any Btrfs dataset.
+- name: Native Btrfs | Keep retired endpoint sudoers absent
+  ansible.builtin.file:
+    path: /etc/sudoers.d/diaries-native-btrfs
+    state: absent
+  become: true
+  tags: [native-btrfs, native-btrfs-sudoers]
+
+# Historical Stage B receiver-prune authority provisioning retired.
+# The existing simplified receiver pruning uses its own protected state.
+- name: Native Btrfs | Provision isolated receiver parent
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /@data/mars-received
+    - /@data/mars-received/@data
+  become: true
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Provision operator-owned transaction state
+  ansible.builtin.file:
+    path: /@data/mars-received/.replication-state
+    state: directory
+    owner: '{{ btrfs_native_operator }}'
+    group: '{{ btrfs_native_operator }}'
+    mode: '0700'
+  become: true
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [native-btrfs]
+
+# 0040-FEAT: receiver-only, default-off, read-only manager installation.
+# Kept separate from the snapshot role: that role creates source subvolumes/timers.
+- name: Native Btrfs | Install receiver-mode manager (opt in)
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/snapshots/files/btrfs-snapshot-manager.py'
+    dest: /usr/local/sbin/btrfs-snapshot-manager
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_native_receiver_manager_install_enabled | bool
+  tags: [native-btrfs, receiver-manager]
+
+# 0040-FEAT: initialise independent, root-controlled recovery holds once;
+# existing operator-added holds must survive all later Ansible runs.

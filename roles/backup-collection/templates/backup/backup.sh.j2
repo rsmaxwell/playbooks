@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+
+cd "{{ normal_user_home }}/scripts/backup" || exit 1
+
+# Coordinate all known mars whole-backup writers with 0035 snapshot creation.
+exec 9>>"{{ diaries_pull_repository_lock }}"
+flock -x 9
+
+( cd home && ./backup.sh )
+( cd cron && ./backup.sh )

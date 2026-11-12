@@ -1,0 +1,35 @@
+
+services:
+
+{% if enable_cloudflare_tunnel | default(false) %}
+  cloudflared:
+    container_name: infra-cloudflared
+    image: cloudflare/cloudflared:latest
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - "${CLOUDFLARE_TUNNEL_TOKEN}"
+{% endif %}
+
+  nginx:
+    container_name: infra-nginx
+    image: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+      - "9418:9418"
+    volumes:
+      - "{{ infrastructure_project_dir }}/nginx/config/nginx.conf:/etc/nginx/nginx.conf"
+      - "{{ infrastructure_project_dir }}/nginx/config/conf.d:/etc/nginx/conf.d"
+      - "{{ infrastructure_project_dir }}/nginx/config/files:/etc/nginx/files"
+      - "{{ infrastructure_project_dir }}/nginx/html:/usr/share/nginx/html"
+      - "{{ infrastructure_project_dir }}/nginx/log:/var/log/nginx"
+    networks:
+      - shared
+
+networks:
+  shared:
+    external: true
+    name: "{{ shared_network_name }}"

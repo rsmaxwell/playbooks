@@ -1,0 +1,74 @@
+---
+# 0045-FEAT phase: Validate, render and activate receiver pruning when opted in.
+- name: Native Btrfs | Validate simplified receiver retention settings
+  ansible.builtin.assert:
+    that:
+      - btrfs_native_endpoint_role == 'receiver'
+      - btrfs_simplified_receiver_retention_install_enabled is boolean
+      - btrfs_simplified_receiver_prune_enabled is boolean
+      - not (btrfs_simplified_receiver_prune_enabled | bool) or (btrfs_simplified_receiver_retention_install_enabled | bool)
+      - (btrfs_simplified_receiver_prune_max_delete | int) >= 1
+      - (btrfs_simplified_receiver_prune_max_delete | int) <= 20
+    fail_msg: Simplified receiver retention requires receiver-only installation and explicit gated enablement
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [simplified-receiver-retention]
+
+- name: Native Btrfs | Install shared manager with simplified receiver retention
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/snapshots/files/btrfs-snapshot-manager.py'
+    dest: /usr/local/sbin/btrfs-snapshot-manager
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_simplified_receiver_retention_install_enabled | bool
+  tags: [simplified-receiver-retention]
+
+- name: Native Btrfs | Install receiver config with independent deletion gate
+  ansible.builtin.template:
+    src: btrfs-receiver-manager.json.j2
+    dest: /etc/btrfs-snapshot-manager.json
+    owner: root
+    group: root
+    mode: '0600'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_simplified_receiver_retention_install_enabled | bool
+  tags: [simplified-receiver-retention]
+
+- name: Native Btrfs | Install dormant simplified receiver retention units
+  ansible.builtin.template:
+    src: '{{ item }}.j2'
+    dest: '/etc/systemd/system/{{ item }}'
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - btrfs-receiver-simple-prune.service
+    - btrfs-receiver-simple-prune.timer
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_simplified_receiver_retention_install_enabled | bool
+  register: btrfs_simple_receiver_units
+  tags: [simplified-receiver-retention]
+
+- name: Native Btrfs | Enforce explicit receiver retention timer state
+  ansible.builtin.systemd:
+    name: btrfs-receiver-simple-prune.timer
+    enabled: '{{ btrfs_simplified_receiver_prune_enabled | bool }}'
+    state: '{{ "started" if btrfs_simplified_receiver_prune_enabled else "stopped" }}'
+    daemon_reload: '{{ btrfs_simple_receiver_units is changed }}'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - btrfs_simplified_receiver_retention_install_enabled | bool
+    # New units are not present during Ansible --check; do not attempt a
+    # systemd transition while previewing creation of those files.
+    - not ansible_check_mode
+  tags: [simplified-receiver-retention]
+
+# 0039-DEF: shared, explicitly gated housekeeping for both source and receiver.

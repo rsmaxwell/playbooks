@@ -1,0 +1,23 @@
+---
+
+- name: archiva | preflight checks
+  ansible.builtin.import_tasks: check.yaml
+  become: yes
+  tags:
+    - check
+
+- name: archiva | copy files
+  ansible.builtin.import_tasks: copy.yaml
+  tags:
+    - copy
+
+- name: archiva | setup compose
+  ansible.builtin.import_tasks: compose.yaml
+  tags:
+    - compose
+
+- name: archiva | prepare the config file archiva.xml
+  ansible.builtin.import_tasks: config.yaml
+  tags:
+    - config
+

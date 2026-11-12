@@ -1,0 +1,74 @@
+---
+
+- name: ledger:shared-frontend | Check the shared Docker network exists
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - inspect
+      - "{{ ledger_shared_network_name }}"
+  changed_when: false
+  register: ledger_shared_network_check
+  failed_when: false
+
+- name: ledger:shared-frontend | Require the shared Docker network
+  ansible.builtin.assert:
+    that:
+      - ledger_shared_network_check.rc == 0
+    fail_msg: >-
+      Shared frontend mode requires the external Docker network
+      '{{ ledger_shared_network_name }}'. Install/start the infrastructure
+      stack before deploying Ledger in shared mode.
+
+- name: ledger:shared-frontend | Check the shared Nginx container exists
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - "{{ ledger_shared_frontend_nginx_container_name }}"
+  changed_when: false
+  register: ledger_shared_nginx_check
+  failed_when: false
+
+- name: ledger:shared-frontend | Require the shared Nginx container
+  ansible.builtin.assert:
+    that:
+      - ledger_shared_nginx_check.rc == 0
+    fail_msg: >-
+      Shared frontend mode requires the Nginx container
+      '{{ ledger_shared_frontend_nginx_container_name }}'. Install/start the
+      infrastructure stack before deploying Ledger in shared mode.
+
+- name: ledger:shared-frontend | Check the shared Nginx files directory exists
+  ansible.builtin.stat:
+    path: "{{ ledger_shared_frontend_file_dir }}"
+  register: ledger_shared_frontend_file_dir_stat
+
+- name: ledger:shared-frontend | Require the shared Nginx files directory
+  ansible.builtin.assert:
+    that:
+      - ledger_shared_frontend_file_dir_stat.stat.isdir | default(false)
+    fail_msg: >-
+      Shared frontend mode requires the infrastructure Nginx files directory
+      '{{ ledger_shared_frontend_file_dir }}'.
+
+- name: ledger:shared-frontend | Check the shared Nginx location directory exists
+  ansible.builtin.stat:
+    path: "{{ ledger_shared_frontend_location_dir }}"
+  register: ledger_shared_frontend_location_dir_stat
+
+- name: ledger:shared-frontend | Require the shared Nginx location directory
+  ansible.builtin.assert:
+    that:
+      - ledger_shared_frontend_location_dir_stat.stat.isdir | default(false)
+    fail_msg: >-
+      Shared frontend mode requires the infrastructure Nginx location directory
+      '{{ ledger_shared_frontend_location_dir }}'.
+
+- name: ledger:shared-frontend | Install Ledger shared Nginx source file
+  ansible.builtin.template:
+    src: config/nginx/shared/ledger.conf.j2
+    dest: "{{ ledger_shared_frontend_file }}"
+    mode: "0644"
+  notify:
+    - Restart ledger stack

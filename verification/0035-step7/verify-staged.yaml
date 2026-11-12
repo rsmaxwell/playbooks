@@ -1,0 +1,137 @@
+---
+- name: 0035 Step 7 | Check installed source parity on mars without modification
+  hosts: mars
+  become: true
+  gather_facts: false
+  vars:
+    expected_files:
+      - {source: roles/snapshots/files/btrfs-snapshot-manager.py, target: /usr/local/sbin/btrfs-snapshot-manager}
+      - {source: roles/snapshots/files/diaries-backup-history.py, target: /usr/local/sbin/diaries-backup-history}
+      - {source: roles/snapshots/files/diaries-snapshot-cleanup.py, target: /usr/local/sbin/diaries-snapshot-cleanup}
+      - {source: roles/btrfs-replication/files/btrfs-native-push.py, target: /usr/local/bin/btrfs-native-push}
+  tasks:
+    - name: Read deployed file hashes
+      ansible.builtin.stat:
+        path: "{{ item.target }}"
+        checksum_algorithm: sha256
+      loop: "{{ expected_files }}"
+      register: installed
+    - name: Compare installed scripts to source bundle
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.checksum == (lookup('ansible.builtin.file', '../../' ~ item.item.source, rstrip=False, lstrip=False) | hash('sha256'))
+        fail_msg: "Deployment drift: {{ item.item.target }} differs or is missing; do not activate/migrate schedules"
+        success_msg: "MATCH: {{ item.item.target }}"
+      loop: "{{ installed.results }}"
+      loop_control:
+        label: "{{ item.item.target }}"
+    - name: Verify protected snapshots and dry-run cleanup
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-snapshot-cleanup, --host, mars, dry-run]
+      register: cleanup
+      changed_when: false
+    - name: Display cleanup result
+      ansible.builtin.debug:
+        var: cleanup.stdout_lines
+    - name: Read configured source timers
+      ansible.builtin.command:
+        argv: [systemctl, show, "{{ item }}", -p, ActiveState, -p, UnitFileState]
+      loop: [btrfs-snapshot-create.timer, btrfs-snapshot-prune.timer, btrfs-native-push.timer]
+      changed_when: false
+      register: timers
+    - name: Show timers
+      ansible.builtin.debug:
+        var: timers.results
+
+- name: 0035 Step 7 | Check installed source parity and ext4 no-op on pluto
+  hosts: pluto
+  become: true
+  gather_facts: false
+  vars:
+    expected_files:
+      - {source: roles/snapshots/files/diaries-backup-history.py, target: /usr/local/sbin/diaries-backup-history}
+      - {source: roles/snapshots/files/diaries-snapshot-cleanup.py, target: /usr/local/sbin/diaries-snapshot-cleanup}
+  tasks:
+    - name: Read deployed file hashes
+      ansible.builtin.stat:
+        path: "{{ item.target }}"
+        checksum_algorithm: sha256
+      loop: "{{ expected_files }}"
+      register: installed
+    - name: Compare installed scripts to source bundle
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.checksum == (lookup('ansible.builtin.file', '../../' ~ item.item.source, rstrip=False, lstrip=False) | hash('sha256'))
+        fail_msg: "Deployment drift: {{ item.item.target }} differs or is missing"
+        success_msg: "MATCH: {{ item.item.target }}"
+      loop: "{{ installed.results }}"
+      loop_control:
+        label: "{{ item.item.target }}"
+    - name: Resolve current published backup
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-backup-history, --published-root, /home/richard/projects/diaries/data/diaries-backup, list]
+      register: publication
+      changed_when: false
+    - name: Inspect safe ext4 cleanup mode
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/diaries-snapshot-cleanup, --host, pluto, dry-run]
+      register: cleanup
+      changed_when: false
+    - ansible.builtin.debug:
+        var: publication.stdout_lines
+    - ansible.builtin.debug:
+        var: cleanup.stdout_lines
+
+- name: 0035 Step 7 | Validate passive native receiver on backup
+  hosts: backup
+  become: true
+  gather_facts: false
+  vars:
+    expected_files:
+      - {source: roles/btrfs-replication/files/btrfs-native-push-receiver.py, target: /usr/local/bin/btrfs-native-push-receiver}
+      - {source: roles/btrfs-replication/files/btrfs-native-endpoint.py, target: /usr/local/libexec/btrfs-native-endpoint}
+  tasks:
+    - name: Read receiver installed hashes
+      ansible.builtin.stat:
+        path: "{{ item.target }}"
+        checksum_algorithm: sha256
+      loop: "{{ expected_files }}"
+      register: installed
+    - name: Compare receiver implementation to Playbooks source
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.checksum == (lookup('ansible.builtin.file', '../../' ~ item.item.source, rstrip=False, lstrip=False) | hash('sha256'))
+        fail_msg: "Receiver drift: {{ item.item.target }} differs or is missing; do not enable any timers"
+        success_msg: "MATCH: {{ item.item.target }}"
+      loop: "{{ installed.results }}"
+      loop_control:
+        label: "{{ item.item.target }}"
+    - name: Check local snapshot timers remain disabled
+      ansible.builtin.command:
+        argv: [systemctl, is-enabled, "{{ item }}"]
+      loop: [btrfs-snapshot-create.timer, btrfs-snapshot-prune.timer]
+      register: disabled_timers
+      changed_when: false
+      failed_when: false
+    - name: Assert receiver stays passive
+      ansible.builtin.assert:
+        that: item.stdout | trim == 'disabled'
+        fail_msg: "STOP: backup local snapshot timer must remain disabled: {{ item.item }}"
+      loop: "{{ disabled_timers.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+    - name: Record legacy mirror and native receive root
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/@data/backup, /@data/mars-received/@data, /@data/mars-received/.replication-state]
+      register: receive_paths
+    - name: Assert all existing trees preserved
+      ansible.builtin.assert:
+        that: item.stat.exists and item.stat.isdir
+        fail_msg: "Missing protected receiver data: {{ item.item }}"
+      loop: "{{ receive_paths.results }}"
+      loop_control:
+        label: "{{ item.item }}"

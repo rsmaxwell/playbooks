@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maven-helper
+  namespace: jenkins
+spec:
+  replicas: {{ .Values.replicas.maven_helper }}
+  selector:
+    matchLabels:
+      app: {{ .Values.podLabels.maven_helper }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.podLabels.maven_helper }}
+    spec:
+      containers:
+        - name:  {{ .Values.container.maven_helper }}
+          image: {{ .Values.image.maven_helper.name }}:{{ .Values.image.maven_helper.tag }}
+          command: ["bash", "-xc"]
+          args:
+            - tail -f /dev/null
+          volumeMounts:
+            - name: maven-data
+              mountPath: /root/.m2
+      volumes:
+        - name: maven-data
+          hostPath:
+          persistentVolumeClaim:
+              claimName: maven-pvc

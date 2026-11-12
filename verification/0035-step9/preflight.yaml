@@ -1,0 +1,74 @@
+---
+# Read-only. Run before approving any 0035 Step 9 scheduler change.
+- name: 0035 Step 9 | Observe source schedules and replication protections
+  hosts: mars
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Capture timer states, last runs and protected snapshot state
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for unit in btrfs-snapshot-create.timer btrfs-snapshot-prune.timer btrfs-native-push.timer snapper-timeline.timer snapper-boot.timer snapper-cleanup.timer; do
+          echo "TIMER $unit enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true) active=$(systemctl is-active "$unit" 2>/dev/null || true)"
+          systemctl show "$unit" -p NextElapseUSecRealtime -p LastTriggerUSec --no-pager 2>/dev/null || true
+        done
+        echo '--- SNAPSHOT STATUS ---'
+        /usr/local/sbin/btrfs-snapshot-manager status
+        echo '--- PRUNE DRY RUN (NO DELETE) ---'
+        /usr/local/sbin/diaries-snapshot-cleanup --host mars dry-run
+        echo '--- NATIVE PUSH SERVICE ---'
+        systemctl show btrfs-native-push.service -p Result -p ExecMainStatus -p ActiveState --no-pager
+        echo '--- LEGACY REMOTE RSYNC PHASE ---'
+        if [ -f /root/scripts/backup/backup.sh ] && grep -Eq '^[[:space:]]*\([[:space:]]*cd[[:space:]]+remote[[:space:]]*&&[[:space:]]*\./backup\.sh[[:space:]]*\)' /root/scripts/backup/backup.sh; then
+          echo 'BLOCKER: legacy remote rsync phase still configured'
+          exit 3
+        fi
+        echo 'PASS: legacy remote rsync phase not configured'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: step9_mars
+    - ansible.builtin.debug:
+        var: step9_mars.stdout_lines
+
+- name: 0035 Step 9 | Observe passive off-site receiver
+  hosts: backup
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Confirm receiver has no native snapshot timers and legacy files remain
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for unit in btrfs-snapshot-create.timer btrfs-snapshot-prune.timer btrfs-native-push.timer; do
+          enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+          active=$(systemctl is-active "$unit" 2>/dev/null || true)
+          echo "TIMER $unit enabled=$enabled active=$active"
+          case "$active" in active|activating) echo 'BLOCKER: unexpected receiver timer'; exit 4;; esac
+        done
+        test -d /@data/backup
+        test -d /@data/mars-received/.replication-state
+        echo 'PASS: passive receiver; legacy mirror and native receipts exist'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: step9_backup
+    - ansible.builtin.debug:
+        var: step9_backup.stdout_lines
+
+- name: 0035 Step 9 | Observe fixed ext4 publisher
+  hosts: pluto
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Confirm current publication is visible without touching it
+      ansible.builtin.shell: |
+        set -euo pipefail
+        test -d /home/richard/projects/diaries/data/.diaries-backup-generations
+        ls -ld /home/richard/projects/diaries/data/.diaries-backup-generations
+        echo 'PASS: published schema-2 generation directory present'
+      args:
+        executable: /bin/bash
+      changed_when: false
+      register: step9_pluto
+    - ansible.builtin.debug:
+        var: step9_pluto.stdout_lines

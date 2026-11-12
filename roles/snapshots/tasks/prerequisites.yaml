@@ -1,0 +1,22 @@
+---
+# 0045-FEAT phase: Install prerequisites and ensure managed data subvolume.
+- name: snapshots | Install native Btrfs snapshot prerequisites
+  ansible.builtin.apt:
+    name:
+      - btrfs-progs
+      - python3
+    state: present
+    update_cache: true
+  become: true
+  tags:
+    - snapshots
+    - prereqs
+
+- name: snapshots | Ensure managed data subvolume exists
+  ansible.builtin.include_role:
+    name: btrfs
+    apply:
+      become: true
+  tags:
+    - snapshots
+    - prereqs

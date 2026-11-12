@@ -1,0 +1,12 @@
+
+projects_dir: "{{ ansible_facts['env']['HOME'] }}/projects"
+builder_project_dir:        "{{ projects_dir }}/builder"
+infrastructure_project_dir: "{{ projects_dir }}/infrastructure"
+
+# Shared infrastructure Nginx route lifecycle for Jenkins.
+# The persistent configuration is installed under config/files by Ansible.
+# start.sh creates the relative symlink under conf.d/locations and stop.sh removes it.
+jenkins_nginx_config_dir:              "{{ infrastructure_project_dir }}/nginx/config"
+jenkins_nginx_source_file:             "{{ jenkins_nginx_config_dir }}/files/jenkins.conf"
+jenkins_nginx_location_file:           "{{ jenkins_nginx_config_dir }}/conf.d/locations/jenkins.conf"
+jenkins_nginx_location_symlink_target: "../../files/jenkins.conf"

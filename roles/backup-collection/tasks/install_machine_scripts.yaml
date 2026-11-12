@@ -1,0 +1,61 @@
+---
+
+
+- name: install_machine_scripts | Create directories
+  ansible.builtin.file:
+    path: "{{ backup_directory }}"
+    state: directory
+  loop:
+    - /root/scripts/backup
+    - /root/scripts/backup/cron
+    - /root/scripts/backup/home
+    - /root/scripts/backup/remote
+    - /root/log/backup
+  loop_control:
+    loop_var: backup_directory
+
+
+- name: install_machine_scripts | Copy files
+  ansible.posix.synchronize:
+    # Preserve the mode of each source entry, as in roles/ledger/tasks/copy.yaml.
+    archive: true
+    src: "backup-machine/"
+    dest: "/root/scripts/backup/"
+    rsync_opts:
+      - "--omit-dir-times"
+      # 0034 Step 8: diaries-pull.py runs as the normal SSH user and is installed
+      # only by tasks/diaries_pull.yaml when explicitly enabled. Never install it
+      # through the generic root machine-script synchronization.
+      - "--exclude=diaries-pull.py"
+      - "--exclude=__pycache__/"
+      - "--exclude=*.pyc"
+  register: machine_script_sync
+- debug:
+    var: machine_script_sync.stdout_lines
+
+
+
+
+- name: install_machine_scripts | Template backup scripts
+  ansible.builtin.template:
+    src: "backup-machine/{{ backup_script }}.j2"
+    dest: "/root/scripts/backup/{{ backup_script }}"
+    mode: "0744"
+  loop:
+    - backup.sh
+    - cron/backup.sh
+    - home/backup.sh
+    - remote/backup.sh
+  loop_control:
+    loop_var: backup_script
+
+
+
+- name: install_machine_scripts | Install cron jobs
+  ansible.builtin.cron:
+    name: "{{ item.name }}"
+    minute: "{{ item.minute }}"
+    hour: "{{ item.hour }}"
+    job: "/root/{{ item.script }} 1>/root/log/{{ item.name }}/stdout 2>/root/log/{{ item.name }}/stderr"
+  loop:
+    - { name: backup, script: scripts/backup/backup.sh, minute:  "15", hour: "2" }

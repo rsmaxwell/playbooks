@@ -1,0 +1,159 @@
+---
+# 0036 Gate E compatibility deployment; no role inclusion, no timers or backups executed.
+# Default is read-only preflight. Set -e gate_e_apply=true for explicitly approved unit installation.
+- name: Gate E - verify and optionally reconcile pluto fixed capture unit
+  hosts: pluto
+  gather_facts: false
+  vars:
+    gate_e_apply: false
+    gate_e_unit: /etc/systemd/system/diaries-complete-backup-publish.service
+    gate_e_project: /home/richard/projects/diaries
+    diaries_project_dir: "{{ gate_e_project }}"
+    diaries_complete_backup_timeout_start_sec: 2h
+  tasks:
+    - name: Require fixed-mode inventory opt-in
+      ansible.builtin.assert:
+        that:
+          - diaries_0036_fixed_capture_enabled | bool
+          - diaries_0036_host_nas_mount_enabled | bool
+          - (diaries_fixed_capture_enabled | default(diaries_0036_fixed_capture_enabled)) | bool
+        fail_msg: Refusing to deploy without proven pluto fixed-mode configuration
+    - name: Select stable Ansible flag without changing the 0036 runtime contract
+      ansible.builtin.set_fact:
+        diaries_fixed_capture_enabled: "{{ diaries_fixed_capture_enabled | default(diaries_0036_fixed_capture_enabled) }}"
+    - name: Check deployed backup service is not running
+      ansible.builtin.command: systemctl is-active diaries-complete-backup-publish.service
+      register: gate_e_service_state
+      changed_when: false
+      failed_when: false
+    - name: Check backup timer status and enablement
+      ansible.builtin.command: "systemctl {{ item }} diaries-complete-backup-publish.timer"
+      loop: [is-active, is-enabled]
+      register: gate_e_timer_states
+      changed_when: false
+      failed_when: false
+    - name: Verify helper and installed service exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ gate_e_project }}/scripts/backup-dataset.sh"
+        - "{{ gate_e_unit }}"
+      register: gate_e_files
+    - name: Enforce scheduler and file preconditions
+      ansible.builtin.assert:
+        that:
+          - gate_e_service_state.stdout | trim != 'active'
+          - gate_e_timer_states.results[0].stdout | trim == 'active'
+          - gate_e_timer_states.results[1].stdout | trim == 'enabled'
+          - gate_e_files.results[0].stat.exists
+          - gate_e_files.results[1].stat.exists
+    - name: Read currently deployed service
+      become: true
+      ansible.builtin.slurp:
+        src: "{{ gate_e_unit }}"
+      register: gate_e_before
+      no_log: true
+    - name: Enforce working Gate D fixed service before any change
+      ansible.builtin.assert:
+        that:
+          - "'fixed-capture-preflight' in (gate_e_before.content | b64decode)"
+          - "'fixed-capture' in (gate_e_before.content | b64decode)"
+          - "'backup-dataset.sh publish\n' not in (gate_e_before.content | b64decode)"
+          - "'backup-dataset.sh publish-preflight' not in (gate_e_before.content | b64decode)"
+        fail_msg: Unexpected live service; refuse automatic replacement
+    - name: Preview candidate systemd unit locally on controller
+      ansible.builtin.set_fact:
+        gate_e_candidate: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../roles/diaries/templates/etc/systemd/system/diaries-complete-backup-publish.service.j2') }}"
+      no_log: true
+    - name: Prove candidate preserves fixed commands
+      ansible.builtin.assert:
+        that:
+          - "'fixed-capture-preflight' in gate_e_candidate"
+          - "'backup-dataset.sh fixed-capture' in gate_e_candidate"
+          - "'backup-dataset.sh publish' not in gate_e_candidate"
+          - "'User=' ~ ansible_user in gate_e_candidate"
+        fail_msg: Candidate failed compatibility contract; do not deploy
+    - name: Report candidate comparison without sensitive content
+      ansible.builtin.debug:
+        msg: "Gate E pluto preflight PASS; apply={{ gate_e_apply | bool }}; candidate_equal={{ (gate_e_before.content | b64decode | trim) == (gate_e_candidate | trim) }}"
+    - name: Preserve pre-deployment copy of systemd unit
+      become: true
+      ansible.builtin.copy:
+        src: "{{ gate_e_unit }}"
+        dest: "{{ gate_e_unit }}.pre-0036-gate-e"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0644'
+        force: false
+      when: gate_e_apply | bool
+    - name: Install vetted candidate systemd unit only when explicitly approved
+      become: true
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../roles/diaries/templates/etc/systemd/system/diaries-complete-backup-publish.service.j2"
+        dest: "{{ gate_e_unit }}"
+        owner: root
+        group: root
+        mode: '0644'
+      register: gate_e_install
+      when: gate_e_apply | bool
+    - name: Reload systemd only when unit changed
+      become: true
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: gate_e_apply | bool and gate_e_install.changed
+    - name: Check unit validity without executing backup
+      become: true
+      ansible.builtin.command: "systemd-analyze verify {{ gate_e_unit }}"
+      changed_when: false
+      when: gate_e_apply | bool
+    - name: Confirm deployed service remains fixed capture
+      become: true
+      ansible.builtin.slurp:
+        src: "{{ gate_e_unit }}"
+      register: gate_e_after
+      no_log: true
+      when: gate_e_apply | bool
+    - name: Assert final unit and timer-safe status
+      ansible.builtin.assert:
+        that:
+          - "'fixed-capture-preflight' in (gate_e_after.content | b64decode)"
+          - "'backup-dataset.sh fixed-capture' in (gate_e_after.content | b64decode)"
+          - "'backup-dataset.sh publish' not in (gate_e_after.content | b64decode)"
+      when: gate_e_apply | bool
+
+- name: Gate E - verify mars fixed destination without deploying
+  hosts: mars
+  gather_facts: false
+  tasks:
+    - name: Require guarded pull inventory
+      ansible.builtin.assert:
+        that:
+          - diaries_pull_install | bool
+          - diaries_pull_fixed_destination_enabled | bool
+          - diaries_snapshot_integration_enabled | bool
+    - name: Check pull service is not currently running
+      ansible.builtin.command: systemctl is-active diaries-pull.service
+      register: gate_e_pull_state
+      changed_when: false
+      failed_when: false
+    - name: Inspect pull timer status and enablement
+      ansible.builtin.command: "systemctl {{ item }} diaries-pull.timer"
+      loop: [is-active, is-enabled]
+      register: gate_e_pull_timer
+      changed_when: false
+      failed_when: false
+    - name: Read existing pull wrapper
+      ansible.builtin.slurp:
+        src: /home/richard/scripts/backup/diaries-pull.sh
+      register: gate_e_pull_wrapper
+      no_log: true
+    - name: Confirm mars pull remains guarded and scheduled
+      ansible.builtin.assert:
+        that:
+          - gate_e_pull_state.stdout | trim != 'active'
+          - gate_e_pull_timer.results[0].stdout | trim == 'active'
+          - gate_e_pull_timer.results[1].stdout | trim == 'enabled'
+          - "'--fixed-destination' in (gate_e_pull_wrapper.content | b64decode)"
+          - "'--fixed-source-guard' in (gate_e_pull_wrapper.content | b64decode)"
+        success_msg: Mars guarded pull retained; no changes applied

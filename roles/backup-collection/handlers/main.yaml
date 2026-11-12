@@ -1,0 +1,7 @@
+---
+
+- name: backup-collection:handler | Reload systemd
+  become: yes
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Restart systemd

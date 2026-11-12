@@ -1,0 +1,98 @@
+---
+- name: ledger:copy | Create project directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ ledger_user }}"
+    group: "{{ ledger_group }}"
+    mode: "0755"
+  loop:
+    - "{{ projects_dir }}"
+    - "{{ ledger_project_dir }}"
+    - "{{ ledger_project_dir }}/backups"
+    - "{{ ledger_project_dir }}/data"
+    - "{{ ledger_project_dir }}/data/postgres"
+    - "{{ ledger_project_dir }}/scripts"
+    - "{{ ledger_project_dir }}/config"
+    - "{{ ledger_project_dir }}/config/nginx"
+    - "{{ ledger_project_dir }}/config/nginx/conf.d"
+    - "{{ ledger_project_dir }}/logs"
+    - "{{ ledger_project_dir }}/logs/nginx"
+
+- name: ledger:copy | Sync content
+  ansible.posix.synchronize:
+    src: sync/
+    dest: "{{ ledger_project_dir }}/"
+    rsync_opts:
+      - "--omit-dir-times"
+  register: result
+  notify:
+    - Restart ledger stack
+
+- name: ledger:copy | Show synchronized files
+  ansible.builtin.debug:
+    var: result.stdout_lines
+
+- name: ledger:copy | Template Ledger runtime files
+  ansible.builtin.template:
+    src: "{{ item.path }}.j2"
+    dest: "{{ ledger_project_dir }}/{{ item.path }}"
+    owner: "{{ ledger_user }}"
+    group: "{{ ledger_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "compose.yaml", mode: "0664" }
+    - { path: "config/nginx/conf.d/site.conf", mode: "0644" }
+    - { path: "scripts/start.sh", mode: "0744" }
+    - { path: "scripts/stop.sh", mode: "0744" }
+    - { path: "scripts/status.sh", mode: "0744" }
+    - { path: "scripts/logs.sh", mode: "0744" }
+    - { path: "scripts/shell-prompt-database.sh", mode: "0744" }
+    - { path: "scripts/shell-prompt-server.sh", mode: "0744" }
+    - { path: "scripts/shell-prompt-client.sh", mode: "0744" }
+    - { path: "scripts/shell-prompt-nginx.sh", mode: "0744" }
+  notify:
+    - Restart ledger stack
+
+- name: ledger:copy | Template Ledger environment file
+  ansible.builtin.template:
+    src: ".env.j2"
+    dest: "{{ ledger_project_dir }}/.env"
+    owner: "{{ ledger_user }}"
+    group: "{{ ledger_group }}"
+    mode: "0600"
+  no_log: true
+  notify:
+    - Restart ledger stack
+
+- name: ledger:copy | Install the Ledger systemd unit
+  become: true
+  ansible.builtin.template:
+    src: "compose/ledger-compose.service.j2"
+    dest: "/etc/systemd/system/ledger-compose.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Restart systemd
+    - Restart ledger stack
+
+- name: ledger:copy | Validate standalone Ledger Nginx configuration
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - --add-host
+      - ledger-client:127.0.0.1
+      - --add-host
+      - ledger-server:127.0.0.1
+      - --volume
+      - "{{ ledger_project_dir }}/config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro"
+      - --volume
+      - "{{ ledger_project_dir }}/config/nginx/conf.d:/etc/nginx/conf.d:ro"
+      - "{{ ledger_nginx_image }}"
+      - nginx
+      - -t
+  changed_when: false
+  when: ledger_frontend_mode == 'standalone'

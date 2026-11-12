@@ -1,0 +1,21 @@
+[Unit]
+Description=Diaries application
+{% if diaries_frontend_mode == 'shared' %}
+After=docker.service {{ diaries_shared_frontend_systemd_unit }}
+Requires=docker.service {{ diaries_shared_frontend_systemd_unit }}
+{% else %}
+After=docker.service
+Requires=docker.service
+{% endif %}
+
+[Service]
+Type=oneshot
+User={{ diaries_user }}
+Group={{ diaries_group }}
+WorkingDirectory={{ diaries_project_dir }}
+ExecStart={{ diaries_project_dir }}/scripts/start.sh
+ExecStop=-{{ diaries_project_dir }}/scripts/stop.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

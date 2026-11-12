@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule verified Diaries publication pull to mars
+
+[Timer]
+OnCalendar={{ diaries_pull_on_calendar }}
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

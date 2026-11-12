@@ -1,0 +1,24 @@
+#!/bin/bash
+
+
+
+echo "Change to the postgres project directory" 
+cd "{{ postgres_project_dir }}" || {
+    echo "Error: $0[${LINENO}]"
+    exit 2
+}
+
+
+echo "Stop the postgres stack"
+output=$(docker compose down 2>&1)
+result=$?
+if [ "${result}" -ne 0 ]; then
+    echo "Error starting postgres"
+    echo "${output}"
+    exit 0
+fi
+
+
+
+exit 1
+

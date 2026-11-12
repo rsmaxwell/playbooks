@@ -1,0 +1,22 @@
+---
+# 0045-FEAT phase: Check manager readiness before activation.
+- name: snapshots | Preflight native snapshot manager before changing schedulers
+  ansible.builtin.command:
+    argv:
+      - "{{ btrfs_snapshot_manager_path }}"
+      - --config
+      - "{{ btrfs_snapshot_manager_config_path }}"
+      - status
+  register: btrfs_snapshot_manager_status
+  changed_when: false
+  become: true
+  tags:
+    - snapshots
+
+- name: snapshots | Show native snapshot-manager preflight
+  ansible.builtin.debug:
+    var: btrfs_snapshot_manager_status.stdout_lines
+  tags:
+    - snapshots
+
+# Activation is deliberately separate from source installation/preflight.

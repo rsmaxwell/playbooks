@@ -1,0 +1,19 @@
+---
+# 0045-FEAT phase: Keep retired receiver-side pull executables absent.
+- name: Native Btrfs | Retire obsolete backup-initiated pull executable
+  ansible.builtin.file:
+    path: /usr/local/bin/btrfs-native-pull
+    state: absent
+  become: true
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [native-btrfs]
+
+- name: Native Btrfs | Retire obsolete rsync-based pull helper
+  ansible.builtin.file:
+    path: /usr/local/libexec/whole-backup-pull.py
+    state: absent
+  become: true
+  when: btrfs_native_endpoint_role == 'receiver'
+  tags: [native-btrfs]
+
+# Explicit 0040 cutover cannot activate a command that is not installed.

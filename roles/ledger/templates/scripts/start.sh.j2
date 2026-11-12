@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Start the installed Ledger production stack.
+#
+# In shared frontend mode the Ledger route is activated only after the
+# application services have reached their health checks.
+
+PROJECT_DIR="{{ ledger_project_dir }}"
+COMPOSE_FILE="${PROJECT_DIR}/compose.yaml"
+ENV_FILE="${PROJECT_DIR}/.env"
+FRONTEND_MODE="{{ ledger_frontend_mode }}"
+SHARED_NETWORK="{{ ledger_shared_network_name }}"
+SHARED_NGINX_CONTAINER="{{ ledger_shared_frontend_nginx_container_name }}"
+SHARED_SOURCE_FILE="{{ ledger_shared_frontend_file }}"
+SHARED_LOCATION_FILE="{{ ledger_shared_frontend_location_file }}"
+SHARED_SYMLINK_TARGET="{{ ledger_shared_frontend_location_symlink_target }}"
+
+require_file() {
+    local file="$1"
+    local description="$2"
+    if [[ ! -f "${file}" ]]; then
+        echo "ERROR: ${description} not found: ${file}" >&2
+        exit 1
+    fi
+}
+
+require_file "${COMPOSE_FILE}" "Ledger Compose file"
+require_file "${ENV_FILE}" "Ledger environment file"
+
+cd "${PROJECT_DIR}"
+
+if [[ "${FRONTEND_MODE}" == "shared" ]]; then
+    if ! docker network inspect "${SHARED_NETWORK}" >/dev/null 2>&1; then
+        echo "ERROR: Shared Docker network '${SHARED_NETWORK}' does not exist." >&2
+        echo "Start/install the infrastructure stack first." >&2
+        exit 1
+    fi
+
+    if ! docker inspect "${SHARED_NGINX_CONTAINER}" >/dev/null 2>&1; then
+        echo "ERROR: Shared Nginx container '${SHARED_NGINX_CONTAINER}' does not exist." >&2
+        echo "Start/install the infrastructure stack first." >&2
+        exit 1
+    fi
+
+    if [[ "$(docker inspect -f '{% raw %}{{.State.Running}}{% endraw %}' "${SHARED_NGINX_CONTAINER}")" != "true" ]]; then
+        echo "ERROR: Shared Nginx container '${SHARED_NGINX_CONTAINER}' is not running." >&2
+        exit 1
+    fi
+
+    require_file "${SHARED_SOURCE_FILE}" "Ledger shared Nginx route source"
+fi
+
+echo "Validating Ledger Docker Compose configuration..."
+docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" config --quiet
+
+echo "Pulling configured Ledger images..."
+docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" pull
+
+echo "Starting Ledger services..."
+docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" \
+    up --detach --remove-orphans --wait
+
+if [[ "${FRONTEND_MODE}" == "shared" ]]; then
+    echo "Activating Ledger routes in shared Nginx..."
+    ln -sfn "${SHARED_SYMLINK_TARGET}" "${SHARED_LOCATION_FILE}"
+
+    if ! docker exec "${SHARED_NGINX_CONTAINER}" nginx -t; then
+        echo "ERROR: Shared Nginx configuration is invalid; removing Ledger route." >&2
+        rm -f "${SHARED_LOCATION_FILE}"
+        exit 1
+    fi
+
+    docker exec "${SHARED_NGINX_CONTAINER}" nginx -s reload
+fi
+
+echo "Ledger stack started successfully."

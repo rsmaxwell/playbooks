@@ -1,0 +1,6 @@
+---
+
+- hosts: infrastructure
+
+  roles:
+    - role: infrastructure

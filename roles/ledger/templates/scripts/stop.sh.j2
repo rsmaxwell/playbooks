@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Stop the installed Ledger production stack.
+
+PROJECT_DIR="{{ ledger_project_dir }}"
+COMPOSE_FILE="${PROJECT_DIR}/compose.yaml"
+ENV_FILE="${PROJECT_DIR}/.env"
+FRONTEND_MODE="{{ ledger_frontend_mode }}"
+SHARED_NGINX_CONTAINER="{{ ledger_shared_frontend_nginx_container_name }}"
+SHARED_LOCATION_FILE="{{ ledger_shared_frontend_location_file }}"
+
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+    echo "ERROR: Ledger Compose file not found: ${COMPOSE_FILE}" >&2
+    exit 1
+fi
+if [[ ! -f "${ENV_FILE}" ]]; then
+    echo "ERROR: Ledger environment file not found: ${ENV_FILE}" >&2
+    exit 1
+fi
+
+if [[ "${FRONTEND_MODE}" == "shared" ]]; then
+    echo "Deactivating Ledger routes in shared Nginx..."
+    rm -f "${SHARED_LOCATION_FILE}"
+
+    if docker inspect -f '{% raw %}{{.State.Running}}{% endraw %}' "${SHARED_NGINX_CONTAINER}" 2>/dev/null | grep -qx 'true'; then
+        docker exec "${SHARED_NGINX_CONTAINER}" nginx -t
+        docker exec "${SHARED_NGINX_CONTAINER}" nginx -s reload
+    else
+        echo "Shared Nginx is not running; the Ledger route symlink was still removed."
+    fi
+fi
+
+cd "${PROJECT_DIR}"
+echo "Stopping Ledger services..."
+docker compose --file "${COMPOSE_FILE}" --env-file "${ENV_FILE}" down --remove-orphans
+
+echo "Ledger stack stopped successfully."

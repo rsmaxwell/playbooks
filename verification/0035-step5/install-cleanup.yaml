@@ -1,0 +1,35 @@
+---
+- name: 0035 Step 5 | Install guarded timestamp cleanup without changing schedules
+  hosts: mars:pluto
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install guarded cleanup front-end
+      ansible.builtin.copy:
+        src: ../../roles/snapshots/files/diaries-snapshot-cleanup.py
+        dest: /usr/local/sbin/diaries-snapshot-cleanup
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install guarded manager on mars only
+      ansible.builtin.copy:
+        src: ../../roles/snapshots/files/btrfs-snapshot-manager.py
+        dest: /usr/local/sbin/btrfs-snapshot-manager
+        owner: root
+        group: root
+        mode: '0755'
+      when: inventory_hostname == 'mars'
+    - name: Inspect host cleanup status (never deletes)
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/diaries-snapshot-cleanup
+          - --host
+          - "{{ inventory_hostname }}"
+          - status
+      register: cleanup_status
+      changed_when: false
+      when: not ansible_check_mode
+    - name: Display cleanup status
+      ansible.builtin.debug:
+        var: cleanup_status.stdout_lines
+      when: not ansible_check_mode

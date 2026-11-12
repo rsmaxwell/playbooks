@@ -1,0 +1,71 @@
+---
+
+replicas:
+  gradle: 0
+  gradle_helper: 0
+  maven_helper: 0
+  bash: 0
+  helper:  0
+  jenkins: 1
+
+image:
+  gradle:
+    name: "rsmaxwell/gradle"
+    tag: "latest"
+  gradle_helper:
+    name: "ubuntu"
+    tag: "jammy"
+  maven_helper:
+    name: "ubuntu"
+    tag: "jammy"
+  bash:
+    name: "bash"
+    tag: "latest"
+  jenkins:
+    name: "rsmaxwell/jenkins"
+    tag: "2.568.2"
+    env:
+      name: "JAVA_OPTS"
+      value: "-Djenkins.install.runSetupWizard=false -Dorg.jenkinsci.plugins.durabletask.BourneShellScript.LAUNCH_DIAGNOSTICS=true"
+
+serviceAccount:
+  name: "jenkins"
+
+
+podLabels:
+  gradle: gradle
+  gradle_helper: gradle-helper
+  maven_helper: maven-helper
+  bash: bash-helper
+  helper: jenkins-helper
+  jenkins: jenkins
+
+
+container:
+  gradle: gradle
+  gradle_helper: gradle-helper
+  maven_helper: maven-helper
+  bash: bash-helper
+  helper: jenkins-helper
+  jenkins: jenkins
+
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+
+ports:
+  http: 
+    port: 8080
+    targetPort: 8080
+    nodePort: 32000
+  ssh: 
+    port: 32654
+    targetPort: 32654
+    nodePort: 31000
+  jnlp: 
+    port: 30350
+    targetPort: 30350
+    nodePort: 30350
+
+

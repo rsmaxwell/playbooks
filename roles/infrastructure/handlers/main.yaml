@@ -1,0 +1,16 @@
+---
+
+- name: infrastructure:handler | Reload systemd
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+  listen: Restart systemd
+
+
+- name: infrastructure:handler | Enable and start infrastructure compose service
+  become: true
+  ansible.builtin.systemd:
+    name: infrastructure-compose.service
+    enabled: true
+    state: started
+  listen: Restart infrastructure stack

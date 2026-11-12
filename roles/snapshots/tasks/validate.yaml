@@ -1,0 +1,52 @@
+---
+# 0045-FEAT phase: Validate source endpoint, activation gates and configured sources.
+- name: snapshots | Refuse generic management of native receiver hosts
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname not in (groups['remote_backup'] | default([]))
+    fail_msg: >-
+      REFUSED: the generic snapshots role must not run on remote_backup hosts.
+      It would replace receiver-mode /etc/btrfs-snapshot-manager.json with
+      source-mode defaults. Manage the receiver through btrfs-replication.yaml.
+  tags:
+    - always
+
+- name: snapshots | Validate activation and Diaries integration gates
+  ansible.builtin.assert:
+    that:
+      - btrfs_snapshot_activation_enabled is boolean
+      - btrfs_snapshot_prune_activation_enabled is boolean
+      - btrfs_snapshot_prune_max_delete is integer
+      - btrfs_snapshot_prune_max_delete >= 1
+      - btrfs_snapshot_prune_max_delete <= 32
+      - btrfs_snapshot_require_verified_diaries is boolean
+      - not (btrfs_snapshot_require_verified_diaries | bool) or (btrfs_snapshot_writer_lock_path | length > 0)
+      - not (btrfs_snapshot_require_verified_diaries | bool) or (btrfs_snapshot_writer_lock_path is match('^/'))
+      - not (btrfs_snapshot_require_verified_diaries | bool) or (btrfs_snapshot_diaries_relative_path | length > 0)
+      - not (btrfs_snapshot_require_verified_diaries | bool) or (btrfs_snapshot_diaries_marker_relative_path | length > 0)
+    fail_msg: >-
+      Invalid snapshot activation/integration configuration. Verified Diaries gating requires an
+      absolute writer lock and configured dataset/marker relative paths.
+  tags:
+    - snapshots
+    - prereqs
+
+# Validate source flags before rendering. Do not coerce strings or integers into booleans.
+- name: snapshots | Validate per-source snapshot flags
+  ansible.builtin.assert:
+    that:
+      - item is mapping
+      - item.name is defined
+      - item.path is defined
+      - item.required is not defined or item.required is boolean
+      - item.creation is not defined or item.creation is boolean
+      - item.prune is not defined or item.prune is boolean
+    fail_msg: >-
+      Invalid source entry or non-boolean required/creation/prune flag:
+      {{ item | to_json }}
+  loop: "{{ btrfs_snapshot_sources }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed') }}"
+  tags:
+    - snapshots
+    - prereqs

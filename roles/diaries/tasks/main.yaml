@@ -1,0 +1,121 @@
+---
+
+- name: diaries | Validate frontend mode
+  ansible.builtin.assert:
+    that:
+      - diaries_frontend_mode in ['standalone', 'shared']
+    fail_msg: >-
+      diaries_frontend_mode must be either 'standalone' or 'shared';
+      current value is '{{ diaries_frontend_mode }}'.
+  tags:
+    - always
+
+- name: diaries | Validate mutable Files directory selector
+  ansible.builtin.assert:
+    that:
+      - diaries_files_dir is defined
+      - (diaries_files_dir | default(none)) is string
+      - (diaries_files_dir | default('', true) | string | length) > 0
+      - (diaries_files_dir | default('', true) | string) is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+    fail_msg: >-
+      diaries_files_dir must be explicitly supplied as one non-empty leaf directory
+      name beneath diaries_nas_content_path (for production today: 'files').
+      Absolute paths, path separators, whitespace and implicit fallback are not allowed.
+  tags:
+    - always
+
+- name: diaries | Validate complete-dataset production configuration
+  ansible.builtin.assert:
+    that:
+      - diaries_complete_backup_repository_root is string
+      - (diaries_complete_backup_repository_root | length) > 0
+      - diaries_complete_backup_repository_root is match('^/')
+      - diaries_complete_restore_state_root is string
+      - (diaries_complete_restore_state_root | length) > 0
+      - diaries_complete_restore_state_root is match('^/')
+      - diaries_complete_backup_repository_root != diaries_complete_restore_state_root
+      - diaries_complete_backup_published_root is string
+      - (diaries_complete_backup_published_root | length) > 0
+      - diaries_complete_backup_published_root is match('^/')
+      - diaries_complete_backup_published_root != diaries_complete_backup_repository_root
+      - diaries_complete_backup_published_root != diaries_complete_restore_state_root
+      - not diaries_complete_backup_published_root.startswith(diaries_complete_backup_repository_root ~ '/')
+      - not diaries_complete_backup_repository_root.startswith(diaries_complete_backup_published_root ~ '/')
+      - not diaries_complete_backup_published_root.startswith(diaries_complete_restore_state_root ~ '/')
+      - not diaries_complete_restore_state_root.startswith(diaries_complete_backup_published_root ~ '/')
+      - diaries_complete_backup_storage_mode in ['auto', 'required-btrfs', 'full-copy']
+      - diaries_complete_backup_schedule_enabled is boolean
+      - diaries_fixed_capture_enabled is boolean
+      - not (diaries_fixed_capture_enabled | bool) or (diaries_host_nas_mount_enabled | bool)
+      - diaries_complete_backup_on_calendar is string
+      - (diaries_complete_backup_on_calendar | length) > 0
+      - diaries_complete_backup_timeout_start_sec is string
+      - (diaries_complete_backup_timeout_start_sec | length) > 0
+    fail_msg: >-
+      Complete-dataset storage configuration is invalid. The legacy backup repository,
+      restore-state root and stable published root must be distinct, non-overlapping
+      absolute POSIX paths. diaries_complete_backup_storage_mode must remain one of:
+      auto, required-btrfs, full-copy for historical capture compatibility.
+  tags:
+    - always
+
+- name: diaries | Validate ImageFragment production authoring gate
+  ansible.builtin.assert:
+    that:
+      - diaries_image_fragment_writes_enabled is boolean
+    fail_msg: >-
+      diaries_image_fragment_writes_enabled must be an explicit boolean.
+      Keep it false until 0027 Step 15 production compatibility evidence is green;
+      set it true deliberately in inventory only for the approved enablement.
+  tags:
+    - always
+
+- name: diaries | utilities
+  ansible.builtin.import_tasks: utilities.yaml
+  tags:
+    - utils
+
+- name: diaries | configure optional 0036 read-only host NAS mount
+  ansible.builtin.import_tasks: 0036-host-nas-mount.yaml
+  when: diaries_host_nas_mount_enabled | bool
+  tags:
+    - 0036-host-nas
+
+- name: diaries | tools
+  ansible.builtin.import_tasks: tools.yaml
+  tags:
+    - tools
+
+- name: diaries | copy files
+  ansible.builtin.import_tasks: copy.yaml
+  tags:
+    - copy
+
+- name: diaries | configure complete-backup unattended schedule
+  ansible.builtin.import_tasks: unattended-backup.yaml
+  tags:
+    - complete-backup-schedule
+
+- name: diaries | configure shared frontend
+  ansible.builtin.import_tasks: shared-frontend.yaml
+  when: diaries_frontend_mode == 'shared'
+  tags:
+    - copy
+    - frontend
+
+- name: diaries | remove stale shared frontend configuration
+  ansible.builtin.import_tasks: standalone-frontend.yaml
+  when: diaries_frontend_mode == 'standalone'
+  tags:
+    - copy
+    - frontend
+
+- name: diaries | generate the mosquitto pwfile
+  ansible.builtin.import_tasks: pwfile.yaml
+  tags:
+    - pwfile
+
+- name: diaries | setup compose
+  ansible.builtin.import_tasks: compose.yaml
+  tags:
+    - compose
