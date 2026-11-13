@@ -2,14 +2,16 @@
 
 - name: install_user_scripts | Create directories
   ansible.builtin.file:
-    path: "{{ backup_directory }}"
+    path: "{{ backup_directory.path }}"
     state: directory
-    mode: "0750"
+    # Leave synchronized directories to Git/rsync. Restrict independent
+    # cron/log directories, which are not supplied by the source checkout.
+    mode: "{{ backup_directory.mode | default(omit) }}"
   loop:
-    - "{{ normal_user_home }}/scripts/backup"
-    - "{{ normal_user_home }}/scripts/backup/cron"
-    - "{{ normal_user_home }}/scripts/backup/home"
-    - "{{ normal_user_home }}/log/backup"
+    - { path: "{{ normal_user_home }}/scripts/backup" }
+    - { path: "{{ normal_user_home }}/scripts/backup/cron", mode: "0750" }
+    - { path: "{{ normal_user_home }}/scripts/backup/home" }
+    - { path: "{{ normal_user_home }}/log/backup", mode: "0750" }
   loop_control:
     loop_var: backup_directory
 

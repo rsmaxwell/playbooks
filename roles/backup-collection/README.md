@@ -86,20 +86,37 @@ backup-collection deployment on `mars`. Use `btrfs-replication.yaml --limit back
 for receiver-side deployment. The role was renamed from `local-backup` in 0047-FEAT. Installed root/user backup scripts,
 including `/root/scripts/backup/remote/`, remain unchanged.
 
-## Bulk synchronization source metadata
+## Git-native source permissions (0048-FEAT)
 
-The `install_user_scripts.yaml` and `install_machine_scripts.yaml` tasks use
-`ansible.posix.synchronize` with archive mode and `--omit-dir-times`, following
-`roles/ledger/tasks/copy.yaml`. No rsync `--chmod` override is permitted: the
-mode on every source entry in `files/backup/` and `files/backup-machine/`
-becomes the deployed mode. Templates are installed separately by Ansible.
+`install_user_scripts.yaml` and `install_machine_scripts.yaml` use archive-mode
+`ansible.posix.synchronize`, with `--omit-dir-times` and no `--chmod` or
+`--no-perms`. Directory and file modes for synchronized content come from the
+**actual controller checkout**, not a separately restored historical manifest.
+The user directory-creation task leaves synchronized directories' modes
+unspecified; the independent user `cron` and `log/backup` directories remain
+`0750`. The machine directory task retains its previous no-mode behaviour.
+Backup launcher templates continue to be installed separately with mode `0744`.
 
-`source-modes.json` records the **per-path** source modes corresponding to the
-accepted 0045 installation, including the nine include/exclude files and the
-five synchronized directories. Git stores only the executable bit for files
-and stores no directory mode, so a new checkout or Beyond Compare transfer
-may not recreate those exact source modes. Restore them in the `mango` working
-copy with the feature-specific 0047 source-mode restoration script **before**
-deploying; then run `tests/verify-collection-source-modes.py` as a preflight.
-The restoration applies modes only to the source files, never to the installed
-backup system.
+For the accepted Git checkout on `mango` (umask `022`), the five synchronized
+source directories have mode `0755` and the nine include/exclude files have
+mode `0644`. Git does not store directory modes or group-write bits; these
+modes therefore depend on checkout environment. Before deploying, run:
+
+```bash
+cd /home/richard/ansible-controller/playbooks
+python3 roles/backup-collection/tests/verify-collection-source-modes.py
+```
+
+The preflight checks current source metadata and role policy, but does **not**
+modify files or deploy anything. If a checkout has different permissions,
+inspect its environment and compare it with a clean Git checkout instead of
+blindly running a historical `chmod` restoration. In particular, rsync will
+copy the modes actually present in the source checkout. The accepted `mars`
+parent-directory boundaries remain `/home/richard` (`0750`) and `/root`
+(`0700`); do not relax those boundaries as part of this role.
+
+The historical source-mode manifest and manual restoration procedure were
+retired from active Playbooks by 0048-FEAT. Their audit trail remains under
+the completed Diaries `0047-FEAT` change-control directory. Production
+acceptance and rollback evidence are recorded separately by 0048; the source
+policy alone does not establish that a deployment has passed.

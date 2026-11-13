@@ -1,67 +1,75 @@
 #!/usr/bin/env python3
-"""0047: rsync copies per-entry source modes, with no --chmod override."""
-import hashlib
-import json
-import os
+"""Read-only 0048 preflight: checkout modes and backup-collection task policy.
+
+These are the accepted checkout modes at umask 022, not a Git-guaranteed mode
+contract. Check the actual source tree before deploying archive-mode rsync.
+"""
 from pathlib import Path
 import stat
-import subprocess
-import tempfile
+import sys
 import yaml
 
 role = Path(__file__).resolve().parents[1]
-contract = json.loads((role / 'source-modes.json').read_text())
-assert contract['schema'] == '0047-collection-source-modes-v1'
-entries = contract['entries']
-assert len(entries) == 14
-for task, expected_src in [('install_user_scripts.yaml', 'backup/'),
-                           ('install_machine_scripts.yaml', 'backup-machine/')]:
-    tasks = yaml.safe_load((role / 'tasks' / task).read_text())
-    copies = [task['ansible.posix.synchronize'] for task in tasks
-              if 'ansible.posix.synchronize' in task]
-    assert len(copies) == 1
-    sync = copies[0]
-    assert sync.get('archive') is True
-    assert sync['src'] == expected_src
-    opts = sync['rsync_opts']
-    assert '--omit-dir-times' in opts
-    assert not any('--chmod' in option or '--no-perms' in option for option in opts)
-for entry in entries:
-    relative = Path(entry['path'])
-    assert not relative.is_absolute() and '..' not in relative.parts
-    assert relative.parts[0] == 'files'
-    source = role / relative
-    assert source.resolve(strict=True).is_relative_to((role / 'files').resolve())
-    assert not source.is_symlink()
-    st = source.stat()
-    assert (stat.S_ISREG(st.st_mode) if entry['kind'] == 'file'
-            else stat.S_ISDIR(st.st_mode)), entry['path']
-    actual = f'{stat.S_IMODE(st.st_mode):04o}'
-    assert actual == entry['mode'], (
-        f"Source mode mismatch: {entry['path']} actual={actual} "
-        f"expected={entry['mode']} (restore source metadata before deploying)")
-    if entry['kind'] == 'file':
-        assert hashlib.sha256(source.read_bytes()).hexdigest() == entry['sha256']
+source_dirs = (
+    "files/backup", "files/backup/home", "files/backup-machine",
+    "files/backup-machine/home", "files/backup-machine/remote",
+)
+filters = tuple(
+    f"files/{branch}/{name}"
+    for branch in ("backup/home", "backup-machine/home", "backup-machine/remote")
+    for name in ("includes", "excludes-1", "excludes-2")
+)
+errors = []
+for relative in source_dirs + filters:
+    path = role / relative
+    is_directory = relative in source_dirs
+    if path.is_symlink() or not path.exists() or path.is_dir() != is_directory:
+        errors.append(f"{relative}: missing, symlink or incorrect type")
+        continue
+    expected = 0o755 if is_directory else 0o644
+    actual = stat.S_IMODE(path.stat().st_mode)
+    if actual != expected:
+        errors.append(f"{relative}: mode {actual:04o}, expected {expected:04o}")
 
-# Disposable rsync test verifies mode preservation followed by idempotence.
-with tempfile.TemporaryDirectory(prefix='0047-source-rsync-') as temp:
-    source = Path(temp) / 'source'
-    dest = Path(temp) / 'dest'
-    (source / 'home').mkdir(parents=True)
-    (dest / 'home').mkdir(parents=True)
-    (source / 'home' / 'includes').write_text('item\n')
-    (dest / 'home' / 'includes').write_text('item\n')
-    for path, mode in [(source, 0o750), (source / 'home', 0o750),
-                       (source / 'home' / 'includes', 0o664), (dest, 0o755),
-                       (dest / 'home', 0o755), (dest / 'home' / 'includes', 0o644)]:
-        os.chmod(path, mode)
-    cmd = ['rsync', '-a', '--omit-dir-times', '--itemize-changes',
-           str(source) + '/', str(dest) + '/']
-    first = subprocess.run(cmd, check=True, text=True, capture_output=True)
-    assert first.stdout.strip(), 'Expected initial mode corrections'
-    assert stat.S_IMODE((dest / 'home').stat().st_mode) == 0o750
-    assert stat.S_IMODE((dest / 'home' / 'includes').stat().st_mode) == 0o664
-    second = subprocess.run(cmd, check=True, text=True, capture_output=True)
-    assert not second.stdout.strip(), second.stdout
-print('PASS: no rsync --chmod; 14 source modes and hashes match 0045; '
-      'rsync propagates source modes and second run is idempotent')
+for task_name, source in (
+    ("install_user_scripts.yaml", "backup/"),
+    ("install_machine_scripts.yaml", "backup-machine/"),
+):
+    try:
+        tasks = yaml.safe_load((role / "tasks" / task_name).read_text())
+        creates = [t for t in tasks if t.get("name", "").endswith("Create directories")]
+        copies = [t["ansible.posix.synchronize"] for t in tasks if "ansible.posix.synchronize" in t]
+        assert len(creates) == len(copies) == 1
+        sync = copies[0]
+        assert sync.get("archive") is True and sync["src"] == source
+        opts = sync["rsync_opts"]
+        assert "--omit-dir-times" in opts
+        assert not any("--chmod" in x or "--no-perms" in x for x in opts)
+        file_task = creates[0]["ansible.builtin.file"]
+        assert file_task["state"] == "directory"
+        if source == "backup/":
+            assert file_task["path"] == "{{ backup_directory.path }}"
+            assert file_task.get("mode") == "{{ backup_directory.mode | default(omit) }}"
+            assert {x["path"]: x.get("mode") for x in creates[0]["loop"]} == {
+                "{{ normal_user_home }}/scripts/backup": None,
+                "{{ normal_user_home }}/scripts/backup/home": None,
+                "{{ normal_user_home }}/scripts/backup/cron": "0750",
+                "{{ normal_user_home }}/log/backup": "0750",
+            }
+        else:
+            assert file_task["path"] == "{{ backup_directory }}"
+            assert "mode" not in file_task
+            assert set(creates[0]["loop"]) == {
+                "/root/scripts/backup", "/root/scripts/backup/cron",
+                "/root/scripts/backup/home", "/root/scripts/backup/remote",
+                "/root/log/backup",
+            }
+    except (AssertionError, KeyError, TypeError, ValueError) as exc:
+        errors.append(f"{task_name}: unexpected Ansible policy: {exc}")
+
+if errors:
+    for issue in errors:
+        print("FAIL:", issue, file=sys.stderr)
+    raise SystemExit(1)
+print("PASS: five Git-native source directories 0755, nine filters 0644; "
+      "no conflicting directory mode or rsync override")
