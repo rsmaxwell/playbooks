@@ -1,0 +1,12 @@
+[Unit]
+Description=Push newest accepted-lineage Btrfs snapshot (0041 dedicated service account)
+Wants=network-online.target
+After=network-online.target
+ConditionFileIsExecutable=/usr/local/libexec/btrfs-replication-sender-cycle-0041
+
+[Service]
+Type=oneshot
+User=btrfs-send
+Group=btrfs-send
+ExecStart=/usr/bin/sudo -n /usr/local/libexec/btrfs-replication-sender-cycle-0041
+TimeoutStartSec={{ btrfs_native_push_timeout_start_sec }}

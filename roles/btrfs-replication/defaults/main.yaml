@@ -64,3 +64,12 @@ btrfs_stale_qgroup_max_stale: 2000
 btrfs_stale_qgroup_filesystem_path: "{{ '/media/usb' if btrfs_native_endpoint_role == 'source' else '/' }}"
 btrfs_stale_qgroup_manager_config_path: /etc/btrfs-snapshot-manager.json
 btrfs_stale_qgroup_writer_lock_path: "{{ '/media/usb/@data/backup/.btrfs-snapshot-writer.lock' if btrfs_native_endpoint_role == 'source' else '/@data/mars-received/.replication-state/writer.lock' }}"
+
+# 0041-FEAT additive-only account/credential provisioning; off until reviewed.
+btrfs_0041_additive_enabled: false
+
+# 0041-FEAT: after accepted dedicated-account transfer, make the canonical
+# 03:30 systemd service use the service identity. This controls only the
+# service template; the existing timer/retention/lock semantics are unchanged.
+# A supervised rollback may set this to legacy without removing accounts.
+btrfs_native_sender_service_identity: dedicated

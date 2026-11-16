@@ -1,0 +1,6 @@
+# Managed by Ansible 0041-FEAT. No root shell, generic btrfs or arbitrary args.
+{% if btrfs_native_endpoint_role == 'source' %}
+btrfs-send ALL=(root) NOPASSWD: /usr/local/libexec/btrfs-replication-sender-cycle-0041 ""
+{% else %}
+btrfs-receive ALL=(root) NOPASSWD: /usr/local/libexec/btrfs-replication-receiver-gate-0041 ""
+{% endif %}

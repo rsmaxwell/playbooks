@@ -1,0 +1,207 @@
+---
+# 0041-FEAT: additive only; never enables/switches any timer or root service.
+# Explicit opt-in AND explicit tag required. No private key leaves mars.
+- name: 0041 | Refuse partial host selection or unknown endpoint
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname in ['mars', 'backup']
+      - ('mars' in ansible_play_hosts_all) and ('backup' in ansible_play_hosts_all)
+      - btrfs_native_endpoint_role == ('source' if inventory_hostname == 'mars' else 'receiver')
+      - btrfs_0041_additive_enabled | bool
+    fail_msg: 0041 requires explicit additive opt-in on both endpoints
+
+- name: 0041 | Explain isolated check-mode key handling
+  ansible.builtin.debug:
+    msg: >-
+      CHECK MODE: account/key-dependent tasks are intentionally skipped on a
+      first deployment because the Ed25519 private key must be generated only
+      on mars. No service/timer is activated. Review source tests and the
+      explicit additive deployment plan before authorising provisioning.
+  when: ansible_check_mode
+
+- name: 0041 | Create dedicated primary group before user
+  ansible.builtin.group:
+    name: "{{ 'btrfs-send' if inventory_hostname == 'mars' else 'btrfs-receive' }}"
+    system: true
+    state: present
+  become: true
+
+- name: 0041 | Create dedicated local account
+  ansible.builtin.user:
+    name: "{{ 'btrfs-send' if inventory_hostname == 'mars' else 'btrfs-receive' }}"
+    system: true
+    create_home: true
+    home: "{{ '/var/lib/btrfs-send' if inventory_hostname == 'mars' else '/var/lib/btrfs-receive' }}"
+    shell: "{{ '/usr/sbin/nologin' if inventory_hostname == 'mars' else '/bin/sh' }}"
+    password_lock: true
+    group: "{{ 'btrfs-send' if inventory_hostname == 'mars' else 'btrfs-receive' }}"
+    groups: []
+    append: false
+    state: present
+  become: true
+  when: not ansible_check_mode
+
+- name: 0041 | Create isolated source key directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: btrfs-send
+    group: btrfs-send
+    mode: '0700'
+  loop:
+    - /var/lib/btrfs-send
+    - /var/lib/btrfs-send/.ssh
+  become: true
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode
+
+- name: 0041 | Protect receiver home and SSH configuration from service writes
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /var/lib/btrfs-receive
+    - /var/lib/btrfs-receive/.ssh
+  become: true
+  when:
+    - inventory_hostname == 'backup'
+    - not ansible_check_mode
+
+- name: 0041 | Generate source-only Ed25519 key without passphrase
+  ansible.builtin.command:
+    argv: [ssh-keygen, -q, -t, ed25519, -N, '', -C, 'btrfs-send@mars 0041', -f, /var/lib/btrfs-send/.ssh/id_ed25519]
+    creates: /var/lib/btrfs-send/.ssh/id_ed25519
+  become: true
+  become_user: btrfs-send
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode
+  no_log: true
+
+- name: 0041 | Confirm key remains private and local
+  ansible.builtin.file:
+    path: /var/lib/btrfs-send/.ssh/id_ed25519
+    owner: btrfs-send
+    group: btrfs-send
+    mode: '0600'
+  become: true
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode
+
+- name: 0041 | Read public key from sender only
+  ansible.builtin.slurp:
+    src: /var/lib/btrfs-send/.ssh/id_ed25519.pub
+  register: btrfs_0041_sender_public_key_file
+  become: true
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode
+
+- name: 0041 | Read receiver host public key, not its private key
+  ansible.builtin.slurp:
+    src: /etc/ssh/ssh_host_ed25519_key.pub
+  register: btrfs_0041_receiver_host_public_key_file
+  become: true
+  when:
+    - inventory_hostname == 'backup'
+    - not ansible_check_mode
+
+- name: 0041 | Create root-controlled identity and helper directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: "{{ ['/usr/local/libexec', '/etc/btrfs-replication-0041'] if inventory_hostname == 'mars' else ['/usr/local/libexec'] }}"
+  become: true
+  when: not ansible_check_mode
+
+- name: 0041 | Install root-owned pinned receiver host key on source
+  ansible.builtin.known_hosts:
+    path: /etc/btrfs-replication-0041/known_hosts
+    name: '[10.254.22.1]:39263'
+    key: "[10.254.22.1]:39263 {{ (hostvars['backup'].btrfs_0041_receiver_host_public_key_file.content | b64decode).split()[0:2] | join(' ') }}"
+    state: present
+  become: true
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode
+
+- name: 0041 | Protect pinned host key from service-account edits
+  ansible.builtin.file:
+    path: /etc/btrfs-replication-0041/known_hosts
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode
+
+- name: 0041 | Install dual-transport runtime (legacy is still the default)
+  ansible.builtin.copy:
+    src: btrfs-simplified-replication.py
+    dest: /usr/local/bin/btrfs-simplified-replication
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when: not ansible_check_mode
+
+- name: 0041 | Install fixed root-owned command gates
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop: "{{ [{'src':'btrfs-replication-sender-cycle-0041.sh','dest':'/usr/local/libexec/btrfs-replication-sender-cycle-0041'}] if inventory_hostname == 'mars' else [{'src':'btrfs-replication-receiver-gate-0041.py','dest':'/usr/local/libexec/btrfs-replication-receiver-gate-0041'},{'src':'btrfs-replication-ssh-dispatch-0041.py','dest':'/usr/local/libexec/btrfs-replication-ssh-dispatch-0041'}] }}"
+  become: true
+
+- name: 0041 | Install narrowly scoped service-only sudoers
+  ansible.builtin.template:
+    src: btrfs-0041-service-sudoers.j2
+    dest: /etc/sudoers.d/btrfs-0041-service
+    owner: root
+    group: root
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+  become: true
+
+- name: 0041 | Install sole root-managed forced-command receiver public key
+  ansible.builtin.copy:
+    dest: /var/lib/btrfs-receive/.ssh/authorized_keys
+    content: "restrict,command=\"/usr/local/libexec/btrfs-replication-ssh-dispatch-0041\" {{ hostvars['mars'].btrfs_0041_sender_public_key_file.content | b64decode | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when:
+    - inventory_hostname == 'backup'
+    - not ansible_check_mode
+
+- name: 0041 | Verify SSH daemon config without changing or reloading it
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+  become: true
+  when:
+    - inventory_hostname == 'backup'
+    - not ansible_check_mode
+
+- name: 0041 | Stage candidate service unit at NON-ACTIVE filename only
+  ansible.builtin.template:
+    src: btrfs-native-push-0041.service.j2
+    dest: /etc/systemd/system/btrfs-native-push-0041-candidate.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when:
+    - inventory_hostname == 'mars'
+    - not ansible_check_mode

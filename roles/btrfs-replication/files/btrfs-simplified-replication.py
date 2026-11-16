@@ -218,6 +218,19 @@ def remove_incomplete(stamp, uuid, state, *, inspect, delete, readback):
 
 def ssh_command(*args):
     require(all(isinstance(x, str) and '\x00' not in x for x in args), 'Unsafe SSH argument')
+    # 0041: opt-in per-transaction transport. The currently scheduled root
+    # service continues using the unchanged legacy route until cutover.
+    if os.environ.get('BTRFS_REPLICATION_IDENTITY_MODE') == 'dedicated':
+        command = shlex.join(['btrfs-replication', 'receiver', *args])
+        return [
+            'sudo', '-n', '-u', 'btrfs-send', 'ssh', '-F', '/dev/null',
+            '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
+            '-o', 'StrictHostKeyChecking=yes', '-o', 'IdentitiesOnly=yes',
+            '-o', 'UserKnownHostsFile=/etc/btrfs-replication-0041/known_hosts',
+            '-i', '/var/lib/btrfs-send/.ssh/id_ed25519',
+            '-p', SSH_PORT, 'btrfs-receive@10.254.22.1', command]
+    require(os.environ.get('BTRFS_REPLICATION_IDENTITY_MODE', '') == '',
+            'Unknown replication transport mode')
     command = shlex.join(['sudo', '-n', INSTALL, 'receiver', *args])
     return ['sudo', '-n', '-u', SSH_USER, 'ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15',
             '-p', SSH_PORT, REMOTE, command]

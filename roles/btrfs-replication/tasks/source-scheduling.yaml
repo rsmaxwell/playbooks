@@ -1,5 +1,50 @@
 ---
 # 0045-FEAT phase: Guard legacy transports and manage source push units and timer.
+# 0041-FEAT: cutover is durable in the normal source service template.
+# Refuse a non-dedicated or unexpected identity rather than silently render
+# an unknown/empty service. This validation also runs in check mode.
+- name: Native Btrfs | Validate requested sender service identity
+  ansible.builtin.assert:
+    that:
+      - btrfs_native_sender_service_identity in ['dedicated', 'legacy']
+      - (btrfs_native_sender_service_identity != 'dedicated') or (btrfs_simplified_replication_active_enabled | bool)
+    fail_msg: 0041 requires dedicated or legacy sender identity and active simplified runtime
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs, scheduling]
+
+- name: Native Btrfs | Verify dedicated sender prerequisites before service cutover
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/local/libexec/btrfs-replication-sender-cycle-0041
+    - /var/lib/btrfs-send/.ssh/id_ed25519
+    - /etc/btrfs-replication-0041/known_hosts
+  register: btrfs_0041_source_files
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - btrfs_native_sender_service_identity == 'dedicated'
+  tags: [native-btrfs, scheduling]
+
+- name: Native Btrfs | Require protected dedicated sender prerequisites
+  ansible.builtin.assert:
+    that:
+      - btrfs_0041_source_files.results | length == 3
+      - btrfs_0041_source_files.results[0].stat.exists
+      - btrfs_0041_source_files.results[0].stat.pw_name == 'root'
+      - btrfs_0041_source_files.results[0].stat.mode == '0755'
+      - btrfs_0041_source_files.results[1].stat.exists
+      - btrfs_0041_source_files.results[1].stat.pw_name == 'btrfs-send'
+      - btrfs_0041_source_files.results[1].stat.mode == '0600'
+      - btrfs_0041_source_files.results[2].stat.exists
+      - btrfs_0041_source_files.results[2].stat.pw_name == 'root'
+      - btrfs_0041_source_files.results[2].stat.mode == '0644'
+    fail_msg: 0041 dedicated sender gate, private key or pinned receiver host key is missing/insecure
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - btrfs_native_sender_service_identity == 'dedicated'
+  tags: [native-btrfs, scheduling]
+
 - name: Native Btrfs | Require simplified runtime installation before service cutover
   ansible.builtin.assert:
     that:

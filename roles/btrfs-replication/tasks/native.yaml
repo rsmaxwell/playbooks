@@ -28,3 +28,10 @@
 
 - name: Native Btrfs | Deploy endpoint-neutral stale-qgroup cleaner
   ansible.builtin.import_tasks: qgroup-deployment.yaml
+
+# 0041-FEAT additive identity provisioning is explicitly gated by a separate
+# opt-in variable and tag; normal production deployments leave it inert.
+- name: Native Btrfs | Add dedicated service identities without activation
+  ansible.builtin.import_tasks: service-identities-0041.yaml
+  when: btrfs_0041_additive_enabled | bool
+  tags: [btrfs-0041-provision]
