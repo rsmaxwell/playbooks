@@ -63,7 +63,7 @@ sudo btrfs-snapshot-manager status
 sudo btrfs-snapshot-manager list
 sudo btrfs-snapshot-manager create
 sudo btrfs-snapshot-manager prune --dry-run
-sudo btrfs-snapshot-manager prune
+sudo btrfs-snapshot-manager prune --max-delete 10
 ```
 
 `status` is non-mutating and reports whether the current Diaries verification marker is valid. `create` refuses to run when the writer lock is busy or the current Diaries state is not verified.
@@ -165,3 +165,21 @@ The role default task entry point now statically imports its existing tasks
 into ordered validation, prerequisites, source roots, installed files, state,
 unit configuration, preflight and activation phases. Per-task tags, conditions,
 notification/handler ordering and installed file destinations are unchanged.
+
+## 0049 backup-management interface
+
+The source and receiver now present aligned, titled `list` and `prune --dry-run`
+tables. Receiver-side `prune` uses the unchanged guarded receiver retention
+algorithm with its existing checkpoint holds, verified Btrfs UUIDs, read-only
+subvolumes, protected agreed parents and journal. Mutation requires an explicit
+`--max-delete N` on **both** endpoints (source 1..32, receiver 1..20);
+`prune` without a cap and `run` are no longer available CLI operations.
+`receiver-simple-plan`, `receiver-simple-prune` and the historic approval-file
+`receiver-prune` commands are no longer exposed by the CLI dispatcher. Source
+verification remains mandatory for snapshot creation where configured but is
+not printed in generic snapshot-manager status; dataset verification and
+history appear in `diaries-backup-status` and `diaries-backup-history`.
+
+Use `btrfs-backup-status` for infrastructure/replication health and
+`diaries-backup-status` for application dataset history. Consult the current
+btrfs-replication role README and the Diaries 0049 feature for deployment.

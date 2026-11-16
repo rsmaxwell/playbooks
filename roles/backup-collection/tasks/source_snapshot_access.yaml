@@ -68,4 +68,4 @@
       Future read-only snapshots of @data inherit source ACLs. Existing
       read-only snapshots such as 20261009-170001Z remain unchanged;
       create a NEW timestamp snapshot after this task and verify readability
-      before initiating the next source-side btrfs-native-push.
+      before initiating the next source-side btrfs-push.

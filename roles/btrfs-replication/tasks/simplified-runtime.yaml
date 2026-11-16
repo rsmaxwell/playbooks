@@ -1,19 +1,41 @@
 ---
-# 0045-FEAT phase: Install shared agreed-parent runtime and status tool.
-- name: Native Btrfs | Install simplified agreed-parent command (opt in)
+# 0049: install the neutral runtime before changing services or forced-command gates.
+- name: Btrfs replication | Install common sender/receiver runtime
   ansible.builtin.copy:
-    src: btrfs-simplified-replication.py
-    dest: /usr/local/bin/btrfs-simplified-replication
+    src: btrfs-replication.py
+    dest: /usr/local/bin/btrfs-replication
     owner: root
     group: root
     mode: '0755'
   become: true
-  when: btrfs_simplified_replication_install_enabled | bool
-  tags: [native-btrfs, simplified-agreed-parent]
+  when: btrfs_replication_install_enabled | bool
+  tags: [native-btrfs, replication-runtime, backup-management]
 
-# Source-side summary must use the same active simplified agreed-parent
-# protocol, not the legacy push/receipt format. Installation is file-only.
-- name: Native Btrfs | Install simplified Diaries backup status report
+# Preserve precisely the 0041 fixed-command sudoers and forced-key boundaries.
+# These two files change only which installed root-owned runtime they exec.
+- name: Btrfs replication | Update fixed 0041 entrypoint runtime paths
+  ansible.builtin.copy:
+    src: "{{ 'btrfs-replication-sender-cycle-0041.sh' if btrfs_native_endpoint_role == 'source' else 'btrfs-replication-receiver-gate-0041.py' }}"
+    dest: "{{ '/usr/local/libexec/btrfs-replication-sender-cycle-0041' if btrfs_native_endpoint_role == 'source' else '/usr/local/libexec/btrfs-replication-receiver-gate-0041' }}"
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when: btrfs_replication_install_enabled | bool
+  tags: [native-btrfs, replication-runtime, backup-management]
+
+- name: Btrfs backup | Install host-aware read-only infrastructure report
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/snapshots/files/btrfs-backup-status.py'
+    dest: /usr/local/sbin/btrfs-backup-status
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when: btrfs_replication_install_enabled | bool
+  tags: [native-btrfs, backup-management]
+
+- name: Diaries | Install dataset-only history summary on source
   ansible.builtin.copy:
     src: '{{ playbook_dir }}/roles/snapshots/files/diaries-backup-status.py'
     dest: /usr/local/sbin/diaries-backup-status
@@ -23,8 +45,5 @@
   become: true
   when:
     - btrfs_native_endpoint_role == 'source'
-    - btrfs_simplified_replication_active_enabled | bool
-  tags: [native-btrfs, simplified-agreed-parent]
-
-# 0040 Step 12: install shared-manager receiver retention while leaving the
-# deletion gate/timer off. Explicit inventory opt-in; never starts pruning.
+    - btrfs_replication_active_enabled | bool
+  tags: [native-btrfs, replication-runtime, backup-management]

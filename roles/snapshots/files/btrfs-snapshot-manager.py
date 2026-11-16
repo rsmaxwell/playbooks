@@ -27,6 +27,7 @@ import re
 import stat
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -652,23 +653,23 @@ def simplified_agreed_parent_pins(config: Config) -> set[str]:
     if not path.exists() and not path.is_symlink():
         return set()
     if directory.is_symlink() or path.is_symlink() or not path.is_file():
-        raise SnapshotError("unsafe simplified agreed-parent state")
+        raise SnapshotError("unsafe agreed-parent state")
     metadata = path.stat()
     if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or
             metadata.st_uid != 0 or metadata.st_mode & 0o077 or metadata.st_size > 4096):
-        raise SnapshotError("unsafe simplified state ownership or size")
+        raise SnapshotError("unsafe agreed-parent state ownership or size")
     try:
         obj = json.loads(path.read_text(encoding="utf-8"))
         if (type(obj) is not dict or set(obj) != {"schema", "parent", "prior"} or
                 type(obj["schema"]) is not int or obj["schema"] != 1):
-            raise ValueError("invalid simplified state schema")
+            raise ValueError("invalid agreed-parent state schema")
         def parse(item):
             if (type(item) is not dict or set(item) != {"timestamp", "uuid"} or
                     type(item["timestamp"]) is not str or
                     not TIMESTAMP_RE.fullmatch(item["timestamp"]) or
                     type(item["uuid"]) is not str or
                     not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", item["uuid"])):
-                raise ValueError("invalid simplified parent record")
+                raise ValueError("invalid agreed-parent record")
             return item["timestamp"]
         current = parse(obj["parent"])
         prior = parse(obj["prior"]) if obj["prior"] is not None else None
@@ -676,7 +677,7 @@ def simplified_agreed_parent_pins(config: Config) -> set[str]:
             raise ValueError("invalid prior snapshot order")
         return {current} | ({prior} if prior else set())
     except (OSError, ValueError, TypeError, UnicodeError) as exc:
-        raise SnapshotError(f"invalid simplified agreed-parent state: {exc}") from exc
+        raise SnapshotError(f"invalid agreed-parent state: {exc}") from exc
 
 
 def replication_pins(config: Config) -> set[str]:
@@ -763,8 +764,8 @@ def checkpoint_command(config: Config, command: str, timestamp: str | None, reas
         raise SnapshotError("checkpoint holds not enabled for this host")
     holds = read_checkpoint_holds(config)
     if command == "hold-list":
-        for stamp, record in sorted(holds.items()):
-            print(f"HELD {stamp} reason={record['reason']}")
+        print_table('BTRFS SNAPSHOT HOLDS', ('Timestamp UTC', 'Reason'),
+                    [(stamp, record['reason']) for stamp, record in sorted(holds.items())])
         return
     assert timestamp is not None
     parse_timestamp(timestamp)
@@ -831,6 +832,8 @@ SOURCE_PRUNE_MAX_SETS_PER_RUN = 32
 def prune(config: Config, dry_run: bool = False, max_delete: int | None = None) -> int:
     # A bounded scheduled prune prevents an accumulated backlog from being
     # deleted in one run. Keep direct legacy invocations backward-compatible.
+    if not dry_run and max_delete is None:
+        raise SnapshotError("prune requires --max-delete N; unbounded deletion is disabled")
     if max_delete is not None and (type(max_delete) is not int or not 1 <= max_delete <= SOURCE_PRUNE_MAX_SETS_PER_RUN):
         raise SnapshotError("source prune max_delete must be between 1 and 32")
     if config.mode != "source":
@@ -871,6 +874,7 @@ def prune(config: Config, dry_run: bool = False, max_delete: int | None = None) 
     print(f"RETENTION sets: total={len(complete)} keep={len(keep)} sources={len(config.sources)}")
     if max_delete is not None:
         print(f"PRUNE-CAP: eligible={len(eligible)} selected={len(selected)} max_delete={max_delete}")
+    preview_rows = []
     for name, _ in complete:
         if name not in selected:
             continue
@@ -878,7 +882,7 @@ def prune(config: Config, dry_run: bool = False, max_delete: int | None = None) 
         if dry_run:
             for source in prune_sources:
                 if snapshot_path(config, source, name).exists():
-                    print(f"WOULD-DELETE {source.name} {name} {snapshot_path(config, source, name)}")
+                    preview_rows.append(('WOULD-DELETE', name, source.name, snapshot_path(config, source, name)))
             continue
         for source in reversed(prune_sources):
             path = snapshot_path(config, source, name)
@@ -887,6 +891,9 @@ def prune(config: Config, dry_run: bool = False, max_delete: int | None = None) 
             subvolume_id = native_prune_subvolume_id(path)
             print(f"DELETE {source.name} {name} subvol_id={subvolume_id} {path}", flush=True)
             run(["btrfs", "subvolume", "delete", str(path)])
+    if dry_run:
+        print_table('BTRFS SOURCE PRUNE PLAN',
+                    ('Action', 'Timestamp UTC', 'Source', 'Snapshot path'), preview_rows)
     print(("Would delete" if dry_run else "Deleted") + f" {deleted_sets} complete timestamp sets")
     return deleted_sets
 
@@ -1392,7 +1399,7 @@ def receiver_simple_validate(config: Config) -> None:
             len(config.sources) != 1 or
             source_directory(config, config.sources[0]) != _SIMPLE_RECEIVED or
             config.lock_path != _SIMPLE_MANAGER_LOCK):
-        raise SnapshotError("unexpected simplified receiver configuration")
+        raise SnapshotError("unexpected Btrfs receiver configuration")
     preflight(config)
     if not _SIMPLE_STATE.is_dir() or _SIMPLE_STATE.is_symlink():
         raise SnapshotError("unsafe receiver state directory")
@@ -1428,14 +1435,14 @@ def receiver_simple_plan(config: Config, *, now: datetime | None = None) -> dict
         raise SnapshotError("duplicate received UUID in receiver dataset")
     pins = simplified_agreed_parent_pins(config)
     if not pins:
-        raise SnapshotError("simplified agreed parent missing")
+        raise SnapshotError("agreed parent missing")
     state = json.loads((_SIMPLE_STATE / ".simple-agreed-parent.json").read_text(encoding="utf-8"))
     for name in ("parent", "prior"):
         value = state[name]
         if value is not None:
             stamp = value["timestamp"]
             if stamp not in identity or identity[stamp]["Received UUID"] != value["uuid"]:
-                raise SnapshotError(f"simplified {name} Btrfs identity mismatch: {stamp}")
+                raise SnapshotError(f"{name} Btrfs identity mismatch: {stamp}")
     # Keep all newer-than-parent objects, even if a previous completed transfer
     # has not yet been acknowledged by the sender.
     current_stamp = state["parent"]["timestamp"]
@@ -1481,23 +1488,27 @@ def receiver_simple_plan(config: Config, *, now: datetime | None = None) -> dict
 
 
 def receiver_simple_print_plan(plan: dict[str, object]) -> None:
-    print("RECEIVER-SIMPLE-PLAN " + json.dumps({
-        "parent": plan["parent"], "prior": plan["prior"],
-        "keep": len(plan["keep"]), "candidates": len(plan["candidates"]),
-        "historical_receipts_preserved": len(plan["historical_receipts"]),
-        "historical_receipts_on_candidates": len(plan["historical_receipts_on_candidates"]),
-        "historical_receipts_orphaned": len(plan["historical_receipts_orphaned"]),
-        "holds": plan["holds"], "enabled": plan["executable"],
-    }, sort_keys=True))
-    keep = set(plan["keep"])
-    for stamp in sorted(plan["identity"], reverse=True):
-        label = ("RETAIN" if stamp in keep else
-                 "ELIGIBLE-WHEN-APPROVED" if plan["executable"] else
-                 "CANDIDATE-NOT-AUTHORIZED")
-        receipt_note = " historical_receipt=preserved" if stamp in plan["historical_receipts"] else ""
-        print(f"{label} {stamp} received_uuid={plan['identity'][stamp]['Received UUID']} "
-              f"subvolume_id={plan['identity'][stamp]['Subvolume ID']}{receipt_note}")
-
+    print('BTRFS RECEIVER PRUNE PLAN')
+    print(f"Deletion gate: {'enabled' if plan['executable'] else 'disabled'}  "
+          f"Retained: {len(plan['keep'])}  Selected for deletion: {len(plan['candidates'])}  "
+          f"Holds: {len(plan['holds'])}")
+    print(f"Protected parent: {plan['parent']['timestamp']}  "
+          f"Prior: {(plan['prior'] or {}).get('timestamp', 'none')}")
+    keep = set(plan['keep'])
+    rows = []
+    for stamp in sorted(plan['identity'], reverse=True):
+        label = ('RETAIN' if stamp in keep else
+                 'ELIGIBLE' if plan['executable'] and stamp in plan['candidates'] else
+                 'NOT SELECTED' if plan['executable'] else 'BLOCKED BY GATE')
+        rows.append((stamp, label, plan['identity'][stamp]['Received UUID'],
+                     plan['identity'][stamp]['Subvolume ID'],
+                     'preserved' if stamp in plan['historical_receipts'] else '-'))
+    print_table('RECEIVED SNAPSHOT RETENTION',
+                ('Timestamp UTC', 'Decision', 'Received UUID', 'Subvolume ID', 'Historical receipt'),
+                rows, numeric=(3,))
+    print(f"Historical receipts preserved: {len(plan['historical_receipts'])}; "
+          f"on eligible snapshots: {len(plan['historical_receipts_on_candidates'])}; "
+          f"orphaned: {len(plan['historical_receipts_orphaned'])}")
 
 def receiver_simple_prune(config: Config, *, max_delete: int) -> int:
     """Guarded receiver-only deletion.  Caller holds manager flock throughout.
@@ -1552,17 +1563,45 @@ def receiver_simple_prune(config: Config, *, max_delete: int) -> int:
         finally:
             os.close(parent_fd)
         deleted += 1
-        print(f"RECEIVER-SIMPLE-DELETED {stamp} subvolume_id={expected['Subvolume ID']}", flush=True)
-    print(f"RECEIVER-SIMPLE-DELETED count={deleted}")
+        print(f"RECEIVER-PRUNE-DELETED {stamp} subvolume_id={expected['Subvolume ID']}", flush=True)
+    print(f"RECEIVER-PRUNE-DELETED count={deleted}")
     return deleted
+
+
+
+def visible_width(value):
+    return sum(0 if unicodedata.combining(c) else
+               2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+               for c in str(value))
+
+def fit(value, width, right=False):
+    value = str(value)
+    pad = ' ' * max(0, width - visible_width(value))
+    return (pad + value) if right else (value + pad)
+
+
+def print_table(title: str, headers: tuple[str, ...], rows: list[tuple[object, ...]], numeric: tuple[int, ...] = ()) -> None:
+    print(title)
+    if not rows:
+        print('No entries')
+        return
+    widths = [max(visible_width(header), *(visible_width(row[i]) for row in rows))
+              for i, header in enumerate(headers)]
+    def line(values):
+        return '  '.join((fit(value, widths[i], right=(i in numeric)))
+                         for i, value in enumerate(values))
+    print(line(headers))
+    print('  '.join('-' * n for n in widths))
+    for row in rows:
+        print(line(row))
 
 def show_list(config: Config) -> None:
     complete, incomplete = managed_snapshot_sets(config)
-    print("TIMESTAMP          STATE      SOURCES")
-    for name, _ in complete:
-        print(f"{name:18} COMPLETE   {','.join(source.name for source in config.sources)}")
-    for name in sorted(incomplete, reverse=True):
-        print(f"{name:18} INCOMPLETE {','.join(sorted(incomplete[name]))}")
+    rows = [(name, 'COMPLETE', ','.join(source.name for source in config.sources))
+            for name, _ in complete]
+    rows += [(name, 'INCOMPLETE', ','.join(sorted(incomplete[name])))
+             for name in sorted(incomplete, reverse=True)]
+    print_table('BTRFS SNAPSHOT INVENTORY', ('Timestamp UTC', 'State', 'Sources'), rows)
 
 
 def qgroup_status(path: Path, *, timeout_seconds: int = 8, warning_threshold: int = 100) -> list[str]:
@@ -1626,18 +1665,6 @@ def show_status(config: Config) -> None:
     print(f"complete_timestamp_sets={len(complete)};incomplete_timestamp_sets={len(incomplete)}")
     for source in config.sources:
         print(f"source={source.name}:{source.source};managed_snapshots={len(list_managed(config, source))}")
-    if config.verification.required:
-        state = read_verified_diaries(config, strict=False)
-        if state and "error" not in state:
-            print(
-                "diaries_verification=valid;"
-                f"logicalDataset={state['logicalDataset']};backupId={state['backupId']};"
-                f"marker={state['marker']}"
-            )
-        else:
-            print(f"diaries_verification=not-ready;detail={(state or {}).get('error', 'unknown')}")
-    else:
-        print("diaries_verification=disabled")
 
 
 def with_lock(path: Path, *, shared: bool = False, nonblocking: bool = True,
@@ -1671,23 +1698,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     create_parser = sub.add_parser("create")
     create_parser.add_argument("--timestamp")
-    prune_parser = sub.add_parser("prune")
+    prune_parser = sub.add_parser("prune", help="endpoint-aware preview or bounded guarded retention deletion")
     prune_parser.add_argument("--dry-run", action="store_true")
-    prune_parser.add_argument("--max-delete", type=int, help="limit source pruning to 1..32 snapshot sets per run")
+    prune_parser.add_argument("--max-delete", type=int, help="maximum deletion count: source 1..32; receiver 1..20")
     sub.add_parser("list")
     sub.add_parser("status")
-    sub.add_parser("receiver-inventory")
-    sub.add_parser("receiver-plan", help="read-only retention selection for verified received snapshots")
-    sub.add_parser("receiver-simple-plan", help="Btrfs-verified simplified receiver retention preview")
-    simple_prune = sub.add_parser("receiver-simple-prune", help="explicitly gated simplified receiver retention")
-    simple_prune.add_argument("--max-delete", type=int, required=True)
-    coordination = sub.add_parser("receiver-coordination-check", help="lock-held read-only receiver parent validation; no deletion authority")
-    coordination.add_argument("--snapshot", required=True)
-    coordination.add_argument("--source-uuid", required=True)
-    sub.add_parser("receiver-recovery-plan", help="lock-held non-mutating interrupted receiver prune classification")
-    guarded = sub.add_parser("receiver-prune", help="explicitly approved, locked receiver deletion")
-    guarded.add_argument("--approval-file", required=True)
-    sub.add_parser("run")
     add_parser = sub.add_parser("hold-add")
     add_parser.add_argument("timestamp")
     add_parser.add_argument("--reason", required=True)
@@ -1699,44 +1714,39 @@ def main(argv: list[str] | None = None) -> int:
     try:
         require_root()
         config = load_config(Path(args.config))
-        if config.mode == "receiver" and args.command not in {"list", "status", "receiver-inventory", "receiver-plan", "receiver-prune", "receiver-coordination-check", "receiver-recovery-plan", "receiver-simple-plan", "receiver-simple-prune"}:
-            raise SnapshotError("receiver mode supports only explicit receiver operations")
-        manager_lock = with_lock(config.lock_path) if args.command in {"create", "prune", "run", "hold-add", "hold-release", "hold-list", "receiver-prune", "receiver-coordination-check", "receiver-recovery-plan", "receiver-inventory", "receiver-plan", "receiver-simple-plan", "receiver-simple-prune"} else None
+        if config.mode == "receiver" and args.command not in {"list", "status", "prune"}:
+            raise SnapshotError("receiver mode supports only list, status and guarded prune")
+        manager_lock = (with_lock(config.lock_path, shared=True, require_existing=True)
+                        if args.command == 'prune' and args.dry_run else
+                        with_lock(config.lock_path) if args.command in {
+                            "create", "prune", "hold-add", "hold-release", "hold-list"} else None)
         writer_lock = None
         try:
-            if args.command in {"receiver-prune", "receiver-coordination-check", "receiver-recovery-plan", "receiver-inventory", "receiver-plan"}:
-                if config.receiver_state_dir is None or config.writer_lock_path != config.receiver_state_dir / "writer.lock":
-                    raise SnapshotError("receiver writer lock configuration missing or inconsistent")
-                writer_lock = with_lock(config.writer_lock_path, require_existing=True)
-            if args.command in {"create", "run"} and config.writer_lock_path is not None:
+            if args.command == "create" and config.writer_lock_path is not None:
                 writer_lock = with_lock(config.writer_lock_path, shared=True, require_existing=True)
             if args.command == "create":
                 create_all(config, args.timestamp)
             elif args.command == "prune":
-                prune(config, args.dry_run, args.max_delete)
+                if config.mode == "receiver":
+                    if args.dry_run:
+                        if args.max_delete is not None and not 1 <= args.max_delete <= 20:
+                            raise SnapshotError("receiver prune max-delete must be within 1..20")
+                        plan = receiver_simple_plan(config)
+                        if args.max_delete is not None:
+                            plan = dict(plan, candidates=plan["candidates"][:args.max_delete])
+                        receiver_simple_print_plan(plan)
+                    else:
+                        if args.max_delete is None:
+                            raise SnapshotError("receiver prune requires --max-delete N")
+                        receiver_simple_prune(config, max_delete=args.max_delete)
+                else:
+                    prune(config, args.dry_run, args.max_delete)
             elif args.command == "list":
                 show_list(config)
             elif args.command == "status":
                 show_status(config)
-            elif args.command == "receiver-inventory":
-                receiver_inventory(config)
-            elif args.command == "receiver-plan":
-                receiver_plan(config)
-            elif args.command == "receiver-simple-plan":
-                receiver_simple_print_plan(receiver_simple_plan(config))
-            elif args.command == "receiver-simple-prune":
-                receiver_simple_prune(config, max_delete=args.max_delete)
-            elif args.command == "receiver-coordination-check":
-                receiver_coordination_check(config, args.snapshot, args.source_uuid)
-            elif args.command == "receiver-recovery-plan":
-                receiver_recovery_plan(config)
-            elif args.command == "receiver-prune":
-                receiver_guarded_prune(config, Path(args.approval_file))
             elif args.command in {"hold-add", "hold-release", "hold-list"}:
                 checkpoint_command(config, args.command, getattr(args, "timestamp", None), getattr(args, "reason", None))
-            elif args.command == "run":
-                create_all(config)
-                prune(config, False)
         finally:
             if writer_lock is not None:
                 writer_lock.close()

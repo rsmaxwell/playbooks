@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule Btrfs received-snapshot retention
+
+[Timer]
+OnCalendar={{ btrfs_receiver_prune_on_calendar }}
+Persistent=false
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

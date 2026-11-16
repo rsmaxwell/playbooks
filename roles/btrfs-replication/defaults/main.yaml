@@ -1,14 +1,13 @@
 ---
-# Simplified native replication is deployed by btrfs-replication.yaml.
+# Btrfs snapshot replication is deployed by btrfs-replication.yaml.
 # No backup-initiated pull or rsync replica is installed by this role.
 
-# Production mars -> backup simplified replication remains
+# Production mars -> backup replication remains
 # explicit opt-in. Ordinary deployment installs the service/timer but leaves
 # the timer disabled until the production scheduling gate is approved.
-btrfs_native_push_schedule_enabled: false
-btrfs_native_push_on_calendar: "*-*-* 03:30:00 UTC"
-btrfs_native_push_timeout_start_sec: 6h
-
+btrfs_push_schedule_enabled: "{{ btrfs_native_push_schedule_enabled | default(false) }}"
+btrfs_push_on_calendar: "{{ btrfs_native_push_on_calendar | default('*-*-* 03:30:00 UTC') }}"
+btrfs_push_timeout_start_sec: "{{ btrfs_native_push_timeout_start_sec | default('6h') }}"
 # 0040-FEAT: explicitly opt in to receiver-mode inventory/planning deployment.
 # Never enables receiver pruning, installs deletion timers, or touches snapshots.
 btrfs_native_receiver_manager_install_enabled: false
@@ -37,21 +36,18 @@ btrfs_native_receiver_checkpoint_holds:
     source_uuids:
       '@data': 087c906a-0518-e34a-88f7-40a5b693c41a
 
-# 0040 simplified agreed-parent runtime. Defaults remain off; effective
+# 0049 neutral operator interface over existing agreed-parent runtime. Defaults remain off; effective
 # inventory on mars opts in to the established 03:30 UTC sender schedule.
-btrfs_simplified_replication_install_enabled: false
-# Explicit source activation gate. The active service always calls the simplified
-# implementation, while preserving the original systemd unit names.
-btrfs_simplified_replication_active_enabled: false
-
+btrfs_replication_install_enabled: "{{ btrfs_simplified_replication_install_enabled | default(false) }}"
+# Explicit source activation gate. The active service calls the agreed-parent runtime.
+btrfs_replication_active_enabled: "{{ btrfs_simplified_replication_active_enabled | default(false) }}"
 # 0040 Step 12: install the shared manager's receipt-independent receiver
 # retention functionality. Destructive execution and its timer remain opt-in
 # behind a separately accepted deletion gate.
-btrfs_simplified_receiver_retention_install_enabled: false
-btrfs_simplified_receiver_prune_enabled: false
-btrfs_simplified_receiver_prune_on_calendar: "*-*-* 04:15:00 UTC"
-btrfs_simplified_receiver_prune_max_delete: 10
-
+btrfs_receiver_retention_install_enabled: "{{ btrfs_simplified_receiver_retention_install_enabled | default(false) }}"
+btrfs_receiver_prune_enabled: "{{ btrfs_simplified_receiver_prune_enabled | default(false) }}"
+btrfs_receiver_prune_on_calendar: "{{ btrfs_simplified_receiver_prune_on_calendar | default('*-*-* 04:15:00 UTC') }}"
+btrfs_receiver_prune_max_delete: "{{ btrfs_simplified_receiver_prune_max_delete | default(10) }}"
 # 0039-DEF: one housekeeping executable for mars and backup. Merely installing
 # it never activates the scheduled cleanup. Both gates must be reviewed for
 # each host after the read-only Step 8 baseline and Step 9 source regression.
@@ -72,4 +68,4 @@ btrfs_0041_additive_enabled: false
 # 03:30 systemd service use the service identity. This controls only the
 # service template; the existing timer/retention/lock semantics are unchanged.
 # A supervised rollback may set this to legacy without removing accounts.
-btrfs_native_sender_service_identity: dedicated
+btrfs_sender_service_identity: "{{ btrfs_native_sender_service_identity | default('dedicated') }}"

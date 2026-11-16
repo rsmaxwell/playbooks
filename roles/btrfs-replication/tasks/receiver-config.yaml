@@ -27,5 +27,5 @@
   tags: [native-btrfs]
 
 # 0042: old native-push, receiver acceptance and Stage B gateway installers
-# are gone. Only btrfs-simplified-replication is installed below.
+# are gone. Only btrfs-replication is installed below.
 # Remove only the installed obsolete pull entrypoint; no data/snapshot deletion.

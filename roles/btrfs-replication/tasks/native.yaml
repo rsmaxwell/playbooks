@@ -14,17 +14,20 @@
 - name: Native Btrfs | Keep retired receiver-side pull executables absent
   ansible.builtin.import_tasks: retire-legacy-pull.yaml
 
-- name: Native Btrfs | Guard legacy transports and manage source push units and timer
-  ansible.builtin.import_tasks: source-scheduling.yaml
-
 - name: Native Btrfs | Configure receiver retention policy and retired observer security
   ansible.builtin.import_tasks: receiver-policy.yaml
 
 - name: Native Btrfs | Install shared agreed-parent runtime and status tool
   ansible.builtin.import_tasks: simplified-runtime.yaml
 
+- name: Native Btrfs | Guard legacy transports and manage source push units and timer
+  ansible.builtin.import_tasks: source-scheduling.yaml
+
 - name: Native Btrfs | Validate, render and activate receiver pruning when opted in
   ansible.builtin.import_tasks: receiver-retention.yaml
+
+- name: Native Btrfs | Remove retired 0049 installed interfaces after guarded cutover
+  ansible.builtin.import_tasks: retire-0049-interfaces.yaml
 
 - name: Native Btrfs | Deploy endpoint-neutral stale-qgroup cleaner
   ansible.builtin.import_tasks: qgroup-deployment.yaml

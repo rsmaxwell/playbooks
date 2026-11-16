@@ -6,9 +6,9 @@
 - name: Native Btrfs | Validate requested sender service identity
   ansible.builtin.assert:
     that:
-      - btrfs_native_sender_service_identity in ['dedicated', 'legacy']
-      - (btrfs_native_sender_service_identity != 'dedicated') or (btrfs_simplified_replication_active_enabled | bool)
-    fail_msg: 0041 requires dedicated or legacy sender identity and active simplified runtime
+      - btrfs_sender_service_identity in ['dedicated', 'legacy']
+      - (btrfs_sender_service_identity != 'dedicated') or (btrfs_replication_active_enabled | bool)
+    fail_msg: Sender requires an approved service identity and active Btrfs replication runtime
   when: btrfs_native_endpoint_role == 'source'
   tags: [native-btrfs, scheduling]
 
@@ -23,7 +23,7 @@
   become: true
   when:
     - btrfs_native_endpoint_role == 'source'
-    - btrfs_native_sender_service_identity == 'dedicated'
+    - btrfs_sender_service_identity == 'dedicated'
   tags: [native-btrfs, scheduling]
 
 - name: Native Btrfs | Require protected dedicated sender prerequisites
@@ -42,17 +42,17 @@
     fail_msg: 0041 dedicated sender gate, private key or pinned receiver host key is missing/insecure
   when:
     - btrfs_native_endpoint_role == 'source'
-    - btrfs_native_sender_service_identity == 'dedicated'
+    - btrfs_sender_service_identity == 'dedicated'
   tags: [native-btrfs, scheduling]
 
-- name: Native Btrfs | Require simplified runtime installation before service cutover
+- name: Native Btrfs | Require replication runtime installation before service cutover
   ansible.builtin.assert:
     that:
-      - btrfs_simplified_replication_install_enabled | bool
-    fail_msg: Simplified replication service cannot run unless its runtime is installed
+      - btrfs_replication_install_enabled | bool
+    fail_msg: Replication service cannot run unless its runtime is installed
   when:
     - btrfs_native_endpoint_role == 'source'
-    - btrfs_simplified_replication_active_enabled | bool
+    - btrfs_replication_active_enabled | bool
   tags: [native-btrfs, scheduling]
 
 # Step 11.4: the source owns one observable off-site schedule. Installation is
@@ -65,8 +65,8 @@
     group: root
     mode: '0644'
   loop:
-    - btrfs-native-push.service
-    - btrfs-native-push.timer
+    - btrfs-push.service
+    - btrfs-push.timer
   become: true
   when: btrfs_native_endpoint_role == 'source'
   tags: [native-btrfs, scheduling]
@@ -86,7 +86,7 @@
   become: true
   when:
     - btrfs_native_endpoint_role == 'source'
-    - btrfs_native_push_schedule_enabled | bool
+    - btrfs_push_schedule_enabled | bool
   tags: [native-btrfs, scheduling]
 
 - name: Native Btrfs | Refuse dual off-site transports
@@ -94,23 +94,63 @@
     that:
       - btrfs_native_legacy_rsync_phase.rc == 1
     fail_msg: >-
-      Refusing to enable btrfs-native-push.timer while the rendered mars root backup
+      Refusing to enable btrfs-push.timer while the rendered mars root backup
       wrapper still invokes the historical remote rsync phase. Deploy backup-collection with
       legacy_remote_rsync_push_enabled=false first.
   when:
     - btrfs_native_endpoint_role == 'source'
-    - btrfs_native_push_schedule_enabled | bool
+    - btrfs_push_schedule_enabled | bool
   tags: [native-btrfs, scheduling]
+
+- name: 0049 | Detect installed old push timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/btrfs-native-push.timer
+  register: btrfs_0049_old_push_timer
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs, scheduling, backup-management]
+
+- name: 0049 | Stop and disable old push timer before enabling replacement
+  ansible.builtin.systemd:
+    name: btrfs-native-push.timer
+    enabled: false
+    state: stopped
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - btrfs_0049_old_push_timer.stat.exists | default(false)
+    - not ansible_check_mode
+  tags: [native-btrfs, scheduling, backup-management]
+
+- name: 0049 | Refuse to change names during an active old push transaction
+  ansible.builtin.command: systemctl is-active --quiet btrfs-native-push.service
+  register: btrfs_0049_old_push_active
+  changed_when: false
+  failed_when: btrfs_0049_old_push_active.rc not in [0, 3, 4]
+  check_mode: false
+  become: true
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs, scheduling, backup-management]
+
+- name: 0049 | Require the old push service to be inactive before timer transition
+  ansible.builtin.assert:
+    that:
+      - btrfs_0049_old_push_active.rc != 0
+    fail_msg: Refusing to rename push units while btrfs-native-push.service is running
+  when: btrfs_native_endpoint_role == 'source'
+  tags: [native-btrfs, scheduling, backup-management]
 
 - name: Native Btrfs | Apply explicit push schedule state
   ansible.builtin.systemd:
-    name: btrfs-native-push.timer
-    enabled: "{{ btrfs_native_push_schedule_enabled | bool }}"
-    state: "{{ 'started' if (btrfs_native_push_schedule_enabled | bool) else 'stopped' }}"
+    name: btrfs-push.timer
+    enabled: "{{ btrfs_push_schedule_enabled | bool }}"
+    state: "{{ 'started' if (btrfs_push_schedule_enabled | bool) else 'stopped' }}"
     daemon_reload: true
   become: true
-  when: btrfs_native_endpoint_role == 'source'
-  tags: [native-btrfs, scheduling]
+  when:
+    - btrfs_native_endpoint_role == 'source'
+    - not ansible_check_mode
+  tags: [native-btrfs, scheduling, backup-management]
 
 # Advisory, unprivileged receiver planning uses the common manager's bucket
 # algorithm but cannot read the protected 0600 manager configuration.

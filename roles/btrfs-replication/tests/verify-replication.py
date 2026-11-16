@@ -9,7 +9,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).parents[1] / 'files' / 'btrfs-simplified-replication.py'
+SCRIPT = Path(__file__).parents[1] / 'files' / 'btrfs-replication.py'
 loader = importlib.machinery.SourceFileLoader('simplified0040', str(SCRIPT))
 spec = importlib.util.spec_from_loader(loader.name, loader)
 m = importlib.util.module_from_spec(spec)

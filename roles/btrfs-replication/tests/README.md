@@ -1,3 +1,27 @@
+# Current source regression (0049-FEAT)
+
+Run these non-destructive tests from `/home/richard/ansible-controller/playbooks`
+on `mango`, **after** applying the 0049 Playbooks ZIP:
+
+```bash
+python3 roles/btrfs-replication/tests/verify-0049-backup-management.py
+python3 roles/btrfs-replication/tests/verify-0041-restricted-identity.py
+python3 roles/btrfs-replication/tests/verify-replication.py
+python3 roles/btrfs-replication/tests/verify-shared-retention.py
+python3 roles/snapshots/tests/verify-diaries-backup-status.py
+python3 roles/snapshots/tests/verify-diaries-backup-history.py
+python3 roles/snapshots/tests/verify-0040-step13-source-prune-cap.py
+python3 roles/snapshots/tests/verify-0040-simplified-receiver-retention.py
+```
+
+The active push unit is `btrfs-push.service` and the active receiver retention
+unit is `btrfs-receiver-prune.service`. Previous 0040 instructions below are
+historical and do not describe the current operator interface.
+
+---
+
+## Historical 0040/0042 regression guidance (archived naming)
+
 > **0042 update (10 November 2026):** The legacy native-push fallback and dormant staged-protocol modules are retired from Playbooks. Only the simplified sender/receiver, shared manager and current regression suites remain operational. Historical tests/guides are preserved via accepted 0040 evidence, 0042 rollback archive and Git history. Older procedures below describe prior 0040 acceptance, not a command to reinstall legacy code.
 
 # 0040-FEAT Step 12 — Simplified agreed-parent replication

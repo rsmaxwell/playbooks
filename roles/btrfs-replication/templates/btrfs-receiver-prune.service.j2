@@ -1,0 +1,11 @@
+[Unit]
+Description=Guarded Btrfs receiver snapshot retention (approved only)
+After=network-online.target
+ConditionPathExists=/etc/btrfs-snapshot-manager.json
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/btrfs-snapshot-manager --config /etc/btrfs-snapshot-manager.json prune --max-delete {{ btrfs_receiver_prune_max_delete }}
+TimeoutStartSec=2h

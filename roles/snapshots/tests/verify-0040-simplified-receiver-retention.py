@@ -107,8 +107,8 @@ class Cases(TestCase):
         output=StringIO()
         with redirect_stdout(output):
             m.receiver_simple_print_plan(plan)
-        self.assertIn('"historical_receipts_on_candidates": 1',output.getvalue())
-        self.assertIn('historical_receipt=preserved',output.getvalue())
+        self.assertIn('on eligible snapshots: 1',output.getvalue())
+        self.assertIn('preserved',output.getvalue())
 
     def test_held_snapshot_bound_to_received_uuid(self):
         stamp=STAMPS[1]
@@ -168,7 +168,7 @@ class Cases(TestCase):
 
     def test_wrong_root_or_lock_blocks_plan(self):
         self.config.lock_path=Path('/tmp/other-lock')
-        with self.assertRaisesRegex(m.SnapshotError,'unexpected simplified receiver configuration'):
+        with self.assertRaisesRegex(m.SnapshotError,'unexpected Btrfs receiver configuration'):
             self.plan()
 
     def test_disabled_prune_has_zero_mutation(self):

@@ -72,7 +72,12 @@ verify(2, False, 2)
 verify(10, False, 3)
 verify(32, False, 3)
 verify(1, True, 1)
-verify(None, False, 3) # existing direct-CLI compatibility
+try:
+    module.prune(config, max_delete=None)
+except module.SnapshotError:
+    print('PASS: 0049 rejects uncapped deletion')
+else:
+    raise AssertionError('uncapped deletion was permitted')
 for invalid in (0, -1, 33, True):
     try:
         module.prune(config, max_delete=invalid)
@@ -95,7 +100,7 @@ eligible, entries = previous_eligible, previous_entries
 
 service = (ROLE/'templates/btrfs-snapshot-prune.service.j2').read_text()
 defaults = (ROLE/'defaults/main.yaml').read_text()
-tasks = (ROLE/'tasks/main.yaml').read_text()
+tasks = (ROLE/'tasks/validate.yaml').read_text() + (ROLE/'tasks/activation.yaml').read_text()  # 0045 static task split
 assert '--max-delete {{ btrfs_snapshot_prune_max_delete }}' in service
 assert 'btrfs_snapshot_prune_activation_enabled: false' in defaults
 assert 'btrfs_snapshot_prune_max_delete: 10' in defaults

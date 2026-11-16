@@ -146,8 +146,8 @@
 
 - name: 0041 | Install dual-transport runtime (legacy is still the default)
   ansible.builtin.copy:
-    src: btrfs-simplified-replication.py
-    dest: /usr/local/bin/btrfs-simplified-replication
+    src: btrfs-replication.py
+    dest: /usr/local/bin/btrfs-replication
     owner: root
     group: root
     mode: '0755'
@@ -196,8 +196,8 @@
 
 - name: 0041 | Stage candidate service unit at NON-ACTIVE filename only
   ansible.builtin.template:
-    src: btrfs-native-push-0041.service.j2
-    dest: /etc/systemd/system/btrfs-native-push-0041-candidate.service
+    src: btrfs-push-0041.service.j2
+    dest: /etc/systemd/system/btrfs-push-0041-candidate.service
     owner: root
     group: root
     mode: '0644'

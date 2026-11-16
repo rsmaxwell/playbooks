@@ -6,14 +6,14 @@
       - inventory_hostname in ['mars', 'backup']
       - btrfs_native_endpoint_role in ['source', 'receiver']
       - btrfs_native_operator == 'richard'
-      - btrfs_native_push_schedule_enabled is boolean
-      - btrfs_native_push_on_calendar is string
-      - (btrfs_native_push_on_calendar | length) > 0
-      - btrfs_native_push_timeout_start_sec is string
-      - btrfs_simplified_replication_install_enabled is boolean
-      - btrfs_simplified_replication_active_enabled is boolean
-      - not (btrfs_native_endpoint_role == 'source' and btrfs_native_push_schedule_enabled) or (btrfs_simplified_replication_install_enabled and btrfs_simplified_replication_active_enabled)
-      - (btrfs_native_push_timeout_start_sec | length) > 0
+      - btrfs_push_schedule_enabled is boolean
+      - btrfs_push_on_calendar is string
+      - (btrfs_push_on_calendar | length) > 0
+      - btrfs_push_timeout_start_sec is string
+      - btrfs_replication_install_enabled is boolean
+      - btrfs_replication_active_enabled is boolean
+      - not (btrfs_native_endpoint_role == 'source' and btrfs_push_schedule_enabled) or (btrfs_replication_install_enabled and btrfs_replication_active_enabled)
+      - (btrfs_push_timeout_start_sec | length) > 0
   tags: [native-btrfs]
 
 - name: Native Btrfs | Ensure privileged helper directory exists

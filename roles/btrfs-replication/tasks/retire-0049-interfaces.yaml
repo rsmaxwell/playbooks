@@ -1,0 +1,35 @@
+---
+# 0049: remove obsolete installed executable and units; never touch snapshot/state data.
+# Scheduled service must already be migrated by source-scheduling / receiver-retention.
+- name: 0049 | Remove old push/receiver systemd units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  loop: "{{ ['btrfs-native-push.service', 'btrfs-native-push.timer'] if btrfs_native_endpoint_role == 'source' else ['btrfs-receiver-simple-prune.service', 'btrfs-receiver-simple-prune.timer'] }}"
+  become: true
+  when:
+    - btrfs_replication_install_enabled | bool
+    - (btrfs_native_endpoint_role == 'source') or (btrfs_receiver_retention_install_enabled | bool)
+    - not ansible_check_mode
+  tags: [native-btrfs, scheduling, receiver-retention, backup-management]
+
+- name: 0049 | Reload unit catalogue after removing old names
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+  when:
+    - btrfs_replication_install_enabled | bool
+    - (btrfs_native_endpoint_role == 'source') or (btrfs_receiver_retention_install_enabled | bool)
+    - not ansible_check_mode
+  tags: [native-btrfs, scheduling, receiver-retention, backup-management]
+
+- name: 0049 | Remove obsolete installed simplified replication path
+  ansible.builtin.file:
+    path: /usr/local/bin/btrfs-simplified-replication
+    state: absent
+  become: true
+  when:
+    - btrfs_replication_install_enabled | bool
+    - (btrfs_native_endpoint_role == 'source') or (btrfs_receiver_retention_install_enabled | bool)
+    - not ansible_check_mode
+  tags: [native-btrfs, backup-management]

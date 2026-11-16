@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -226,6 +227,35 @@ def inspect_published(published_root: Path) -> Occurrence:
     return Occurrence("live", published_root.parent, dataset, logical_dataset, backup_id, sha256_file(manifest))
 
 
+
+
+def visible_width(value):
+    return sum(0 if unicodedata.combining(c) else
+               2 if unicodedata.east_asian_width(c) in ('F', 'W') else 1
+               for c in str(value))
+
+def fit(value, width, right=False):
+    value = str(value)
+    pad = ' ' * max(0, width - visible_width(value))
+    return (pad + value) if right else (value + pad)
+
+
+def print_table(title, headers, rows, numeric=()):
+    """Never truncate identities or paths; dynamically size each displayed column."""
+    print(title)
+    if not rows:
+        print('No retained backups found')
+        return
+    widths = [max(visible_width(h), *(visible_width(row[i]) for row in rows))
+              for i, h in enumerate(headers)]
+    def line(fields):
+        return '  '.join((fit(value, widths[i], right=(i in numeric)))
+                         for i, value in enumerate(fields))
+    print(line(headers))
+    print('  '.join('-' * width for width in widths))
+    for row in rows:
+        print(line(row))
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default="/etc/btrfs-snapshot-manager.json")
@@ -267,11 +297,12 @@ def main(argv: list[str] | None = None) -> int:
                         "status": "conflict" if conflict else "verified",
                     })
                 if args.json_output:
-                    print(json.dumps({"occurrences": rows, "warnings": warnings}, sort_keys=True))
+                    print(json.dumps({"occurrences": rows, "warnings": warnings}, sort_keys=True, indent=2))
                 else:
-                    print("LOGICAL DATASET  BACKUP ID          SNAPSHOT             STATUS")
-                    for row in rows:
-                        print(f"{row['logicalDataset']:<16} {row['backupId']:<18} {row['snapshot']:<20} {row['status']}")
+                    print_table("RETAINED DIARIES BACKUP OCCURRENCES",
+                                ("Logical dataset", "Backup ID", "Snapshot UTC", "Manifest identity", "Path"),
+                                [(row['logicalDataset'], row['backupId'], row['snapshot'],
+                                  row['status'], row['path']) for row in rows])
                 return 2 if conflicts or warnings else 0
 
             rows = []
@@ -286,15 +317,14 @@ def main(argv: list[str] | None = None) -> int:
                     "status": "conflict" if key in conflicts else "verified",
                 })
             if args.json_output:
-                print(json.dumps({"backups": rows, "warnings": warnings}, sort_keys=True))
+                print(json.dumps({"backups": rows, "warnings": warnings}, sort_keys=True, indent=2))
             else:
-                print("LOGICAL DATASET  BACKUP ID          FIRST RETAINED        LAST RETAINED         SNAPSHOTS STATUS")
-                for row in rows:
-                    print(
-                        f"{row['logicalDataset']:<16} {row['backupId']:<18} "
-                        f"{row['firstRetainedSnapshot']:<21} {row['lastRetainedSnapshot']:<21} "
-                        f"{row['snapshots']:<9} {row['status']}"
-                    )
+                print_table("RETAINED DIARIES BACKUPS",
+                            ("Logical dataset", "Backup ID", "First retained UTC", "Last retained UTC",
+                             "Snapshots", "Manifest identity"),
+                            [(row['logicalDataset'], row['backupId'], row['firstRetainedSnapshot'],
+                              row['lastRetainedSnapshot'], row['snapshots'], row['status']) for row in rows],
+                            numeric=(4,))
             return 2 if conflicts or warnings else 0
 
         key, values = select_backup(grouped, args.backup_id, args.logical_dataset)
@@ -312,12 +342,12 @@ def main(argv: list[str] | None = None) -> int:
                 for item in values
             ]
             if args.json_output:
-                print(json.dumps({"logicalDataset": key[0], "backupId": key[1], "occurrences": rows}, sort_keys=True))
+                print(json.dumps({"logicalDataset": key[0], "backupId": key[1], "occurrences": rows}, sort_keys=True, indent=2))
             else:
-                print(f"logicalDataset={key[0]}")
-                print(f"backupId={key[1]}")
-                for row in rows:
-                    print(f"snapshot={row['snapshot']};path={row['path']};manifestSha256={row['manifestSha256']}")
+                print(f"Logical dataset: {key[0]}  Backup ID: {key[1]}")
+                print_table("RETAINED OCCURRENCES",
+                            ("Snapshot UTC", "Manifest SHA-256", "Path"),
+                            [(row['snapshot'], row['manifestSha256'], row['path']) for row in rows])
             return 0
 
         occurrence = values[0]

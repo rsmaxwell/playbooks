@@ -21,7 +21,7 @@ def load(module, name):
     loader.exec_module(obj)
     return obj
 
-sender=load('btrfs-simplified-replication.py','rep0041')
+sender=load('btrfs-replication.py','rep0041')
 dispatch=load('btrfs-replication-ssh-dispatch-0041.py','dispatch0041')
 gate=load('btrfs-replication-receiver-gate-0041.py','gate0041')
 A='20261112-030019Z'
@@ -34,7 +34,7 @@ class Contracts(unittest.TestCase):
         with patch.dict(os.environ,{},clear=True):
             args=sender.ssh_command('status')
         self.assertEqual(args[:6],['sudo','-n','-u','richard','ssh','-o'])
-        self.assertEqual(args[-1], 'sudo -n /usr/local/bin/btrfs-simplified-replication receiver status')
+        self.assertEqual(args[-1], 'sudo -n /usr/local/bin/btrfs-replication receiver status')
         self.assertEqual(args[-2], 'richard@10.254.22.1')
 
     def test_dedicated_transport_is_strict(self):
@@ -129,7 +129,7 @@ class Contracts(unittest.TestCase):
         self.assertIn('no_log: true',tasks)
         self.assertNotIn('state: started',tasks)
         self.assertNotIn('daemon_reload:',tasks)
-        self.assertIn('btrfs-native-push-0041-candidate.service',tasks)
+        self.assertIn('btrfs-push-0041-candidate.service',tasks)
         defaults=(ROOT/'defaults/main.yaml').read_text()
         self.assertIn('btrfs_0041_additive_enabled: false',defaults)
 

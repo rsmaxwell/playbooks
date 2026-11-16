@@ -11,7 +11,7 @@ import re
 import signal
 import sys
 
-RUNTIME = '/usr/local/bin/btrfs-simplified-replication'
+RUNTIME = '/usr/local/bin/btrfs-replication'
 STAMP = re.compile(r'[0-9]{8}-[0-9]{6}Z\Z')
 UUID = re.compile(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z')
 MAX_HEADER = 512

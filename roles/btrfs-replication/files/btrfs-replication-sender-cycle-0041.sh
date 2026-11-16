@@ -9,4 +9,4 @@ fi
 # manager lock; its SSH subprocess is delegated to the dedicated non-admin user.
 BTRFS_REPLICATION_IDENTITY_MODE=dedicated
 export BTRFS_REPLICATION_IDENTITY_MODE
-exec /usr/local/bin/btrfs-simplified-replication sender cycle
+exec /usr/local/bin/btrfs-replication sender cycle
