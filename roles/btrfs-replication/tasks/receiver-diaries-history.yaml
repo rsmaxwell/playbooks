@@ -1,0 +1,45 @@
+---
+# 0050-FEAT: local, read-only Diaries history of already received Btrfs snapshots.
+# No receiver pruning/replication changes and no 0041 SSH/sudoers changes.
+# Source provisioning remains owned by the snapshots role.
+- name: Diaries receiver history | Ensure independent schema-2 verifier directory exists
+  ansible.builtin.file:
+    path: /usr/local/lib/diaries-backup
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - (btrfs_native_receiver_manager_install_enabled | bool) or (btrfs_receiver_retention_install_enabled | bool)
+  tags: [native-btrfs, receiver-diaries-history, backup-management]
+
+- name: Diaries receiver history | Install the existing independent schema-2 verifier
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/diaries/files/sync/scripts/complete-dataset-manifest.py'
+    dest: /usr/local/lib/diaries-backup/complete-dataset-manifest.py
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - (btrfs_native_receiver_manager_install_enabled | bool) or (btrfs_receiver_retention_install_enabled | bool)
+  tags: [native-btrfs, receiver-diaries-history, backup-management]
+
+- name: Diaries receiver history | Install shared read-only history and status commands
+  ansible.builtin.copy:
+    src: '{{ playbook_dir }}/roles/snapshots/files/{{ item.src }}'
+    dest: '/usr/local/sbin/{{ item.dest }}'
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - {src: 'diaries-backup-history.py', dest: 'diaries-backup-history'}
+    - {src: 'diaries-backup-status.py', dest: 'diaries-backup-status'}
+  become: true
+  when:
+    - btrfs_native_endpoint_role == 'receiver'
+    - (btrfs_native_receiver_manager_install_enabled | bool) or (btrfs_receiver_retention_install_enabled | bool)
+  tags: [native-btrfs, receiver-diaries-history, backup-management]

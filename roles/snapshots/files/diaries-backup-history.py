@@ -57,21 +57,66 @@ def load_config(path: Path) -> HistoryConfig:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         raise HistoryError(f"cannot read configuration {path}: {exc}") from exc
-    verification = raw.get("verification", {})
-    if not verification.get("required", False):
+    if not isinstance(raw, dict):
+        raise HistoryError("snapshot-manager configuration must be a JSON object")
+    mode = raw.get("mode", "source")
+    if mode not in ("source", "receiver"):
+        raise HistoryError(f"unsupported snapshot-manager mode for Diaries history: {mode!r}")
+    receiver = mode == "receiver"
+    section_name = "diaries_history" if receiver else "verification"
+    section = raw.get(section_name, {})
+    if not isinstance(section, dict):
+        raise HistoryError(f"{section_name} must be a JSON object")
+    if receiver:
+        # A receiver may inspect already verified markers, but must NEVER enable
+        # the manager's source-side snapshot-creation verification gate.
+        manager_verification = raw.get("verification", {})
+        if not isinstance(manager_verification, dict) or manager_verification.get("required", False) is not False:
+            raise HistoryError("receiver manager must keep verification.required=false")
+        if section.get("enabled") is not True:
+            raise HistoryError("receiver Diaries history has not been explicitly enabled")
+    elif section.get("required") is not True:
         raise HistoryError("Diaries verification is not enabled in snapshot-manager configuration")
-    source_name = str(verification.get("source_name", ""))
-    sources = {str(item.get("name")): Path(item.get("path", "")) for item in raw.get("sources", [])}
-    if source_name not in sources:
-        raise HistoryError("verification.source_name is not a configured snapshot source")
-    manifest_tool = Path(verification.get("manifest_tool") or "")
-    if not manifest_tool.is_absolute():
-        raise HistoryError("verification.manifest_tool must be configured as an absolute path")
+
+    source_name = section.get("source_name")
+    sources = raw.get("sources", [])
+    if not isinstance(source_name, str) or not source_name or not isinstance(sources, list):
+        raise HistoryError(f"{section_name}.source_name must name a configured snapshot source")
+    matches = [item for item in sources if isinstance(item, dict) and item.get("name") == source_name]
+    if len(matches) != 1:
+        raise HistoryError(f"{section_name}.source_name must name exactly one snapshot source")
+
+    manifest_tool_value = section.get("manifest_tool")
+    if not isinstance(manifest_tool_value, str) or not Path(manifest_tool_value).is_absolute():
+        raise HistoryError(f"{section_name}.manifest_tool must be configured as an absolute path")
+    manifest_tool = Path(manifest_tool_value)
+    snapshot_root_value = raw.get("snapshot_root")
+    if not isinstance(snapshot_root_value, str) or not Path(snapshot_root_value).is_absolute():
+        raise HistoryError("snapshot_root must be an absolute path")
+    snapshot_root = Path(snapshot_root_value)
+    if receiver:
+        # The receiver's inventory path is explicit and must refer to the
+        # fixed, local Btrfs repository, not an arbitrary path or symlink.
+        if source_name != "@data":
+            raise HistoryError("receiver history requires the @data received-snapshot collection")
+        configured = matches[0].get("snapshot_directory")
+        if not isinstance(configured, str) or not Path(configured).is_absolute():
+            raise HistoryError("receiver source must configure an absolute snapshot_directory")
+        source_directory = Path(configured)
+        if source_directory != snapshot_root / source_name:
+            raise HistoryError("receiver snapshot_directory must be the local @data child of snapshot_root")
+        try:
+            if (snapshot_root.is_symlink() or source_directory.is_symlink() or
+                    snapshot_root.resolve(strict=True) != snapshot_root or
+                    source_directory.resolve(strict=True) != source_directory):
+                raise HistoryError("receiver snapshot root/directory must be canonical without symlinks")
+        except (OSError, RuntimeError) as exc:
+            raise HistoryError(f"receiver snapshot directory is unavailable: {exc}") from exc
     return HistoryConfig(
-        snapshot_root=Path(raw["snapshot_root"]).resolve(),
+        snapshot_root=snapshot_root.resolve(),
         source_name=source_name,
-        dataset_relative_path=safe_relative(verification.get("dataset_relative_path"), "verification.dataset_relative_path"),
-        marker_relative_path=safe_relative(verification.get("marker_relative_path"), "verification.marker_relative_path"),
+        dataset_relative_path=safe_relative(section.get("dataset_relative_path"), f"{section_name}.dataset_relative_path"),
+        marker_relative_path=safe_relative(section.get("marker_relative_path"), f"{section_name}.marker_relative_path"),
         manifest_tool=manifest_tool,
     )
 
@@ -105,6 +150,9 @@ def inspect_occurrence(config: HistoryConfig, snapshot: str) -> Occurrence:
     marker_path = joined(occurrence_root, config.marker_relative_path)
     if marker_path.is_symlink() or not marker_path.is_file():
         raise HistoryError("verified marker missing/unsafe")
+    # Parent directories can also be symlinks. Enforce containment BEFORE
+    # reading marker bytes, just as we do for the dataset path below.
+    marker_path = resolved_inside(marker_path, occurrence_root, "verified marker")
     try:
         marker = json.loads(marker_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -150,8 +198,8 @@ def inspect_occurrence(config: HistoryConfig, snapshot: str) -> Occurrence:
 
 def enumerate_occurrences(config: HistoryConfig) -> tuple[list[Occurrence], list[tuple[str, str]]]:
     source_root = config.snapshot_root / config.source_name
-    if not source_root.is_dir():
-        raise HistoryError(f"managed snapshot source directory missing: {source_root}")
+    if not source_root.is_dir() or source_root.is_symlink():
+        raise HistoryError(f"managed snapshot source directory missing/unsafe: {source_root}")
     occurrences: list[Occurrence] = []
     warnings: list[tuple[str, str]] = []
     names = sorted(
@@ -359,10 +407,15 @@ def main(argv: list[str] | None = None) -> int:
             verifier = (args.manifest_tool if config is None else config.manifest_tool)
             if verifier is None or not verifier.is_file():
                 raise HistoryError(f"schema-2 verifier missing: {verifier}")
-            result = subprocess.run(
-                [sys.executable, str(verifier), "verify", "--backup-dir", str(occurrence.dataset_path)],
-                text=True,
-            )
+            command = [sys.executable, str(verifier), "verify", "--backup-dir", str(occurrence.dataset_path)]
+            # Schema-2 supports both historical backupId-named generations and
+            # the fixed diaries-backup publication root.  The latter needs its
+            # existing explicit verifier mode; otherwise the verifier tries to
+            # parse the literal directory name "diaries-backup" as a timestamp.
+            # Never enable this exception for arbitrary directory names.
+            if occurrence.dataset_path.name == "diaries-backup":
+                command.append("--allow-fixed-working-root")
+            result = subprocess.run(command, text=True)
             if result.returncode != 0:
                 raise HistoryError(f"schema-2 verification failed for {occurrence.dataset_path}")
             print(

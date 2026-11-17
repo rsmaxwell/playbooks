@@ -26,6 +26,9 @@
 - name: Native Btrfs | Validate, render and activate receiver pruning when opted in
   ansible.builtin.import_tasks: receiver-retention.yaml
 
+- name: Diaries | Install read-only history commands on the Btrfs receiver
+  ansible.builtin.import_tasks: receiver-diaries-history.yaml
+
 - name: Native Btrfs | Remove retired 0049 installed interfaces after guarded cutover
   ansible.builtin.import_tasks: retire-0049-interfaces.yaml
 

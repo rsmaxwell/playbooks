@@ -13,5 +13,12 @@
     {"name": "@data", "snapshot_directory": "/@data/mars-received/@data"}
   ],
   "verification": {"required": false},
+  "diaries_history": {
+    "enabled": true,
+    "source_name": "@data",
+    "dataset_relative_path": "backup/pluto/diaries-backup",
+    "marker_relative_path": "backup/.diaries-snapshot-verified.json",
+    "manifest_tool": "/usr/local/lib/diaries-backup/complete-dataset-manifest.py"
+  },
   "retention": {{ btrfs_receiver_retention | to_json }}
 }

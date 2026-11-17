@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""0049: read-only Diaries dataset history and manifest-identity summary (mars)."""
+"""Read-only host-local Diaries dataset history and manifest-identity summary."""
 import argparse
 import json
 import subprocess

@@ -123,3 +123,17 @@ report uses only the simplified `sender status` contract, preserves the
 previous report sections and refuses invalid/unverified receiver state.
 The current source package does **not** certify live deployment or the first
 8 November unattended receiver-prune result.
+
+## 0050 receiver-local Diaries history
+
+`diaries-backup-history` reads `diaries_history` in receiver mode while
+requiring `verification.required=false` to preserve manager safety. The
+feature fixture, stored in the Diaries parent change-control directory, runs
+source compatibility and receiver-only/invalid-manifest/symlink/verify tests.
+The permanent Playbooks source contract runs as follows:
+
+```bash
+python3 roles/btrfs-replication/tests/verify-0050-receiver-history-contract.py
+```
+
+No live snapshot is modified by either regression test.

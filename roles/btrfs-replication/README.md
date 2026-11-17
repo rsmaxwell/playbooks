@@ -1,4 +1,4 @@
-# Btrfs snapshot replication and backup management (0049)
+# Btrfs snapshot replication and backup management (0049/0050)
 
 Current operational scheme: **agreed-parent Btrfs replication**, with one sender
 (`mars`) and one receiver (`backup`). There is no second replication scheme.
@@ -13,9 +13,11 @@ controls are unchanged by 0049.
 | `sudo -n btrfs-backup-status` | both | Read-only infrastructure status |
 | `sudo -n btrfs-backup-status --local-only` | both | Local-only report, no SSH |
 | `sudo -n btrfs-backup-status --json` | both | Pretty-printed JSON report |
-| `sudo -n diaries-backup-status` | mars | Retained Diaries datasets only |
-| `sudo -n diaries-backup-status --limit 20 --json` | mars | JSON dataset summary |
-| `sudo -n diaries-backup-history list` | mars | Full grouped dataset history |
+| `sudo -n diaries-backup-status` | both | Host-local retained Diaries datasets only (0050 receiver support) |
+| `sudo -n diaries-backup-status --limit 20 --json` | both | JSON dataset summary |
+| `sudo -n diaries-backup-history list` | both | Full grouped dataset history |
+| `sudo -n diaries-backup-history list --all` | both | Every retained occurrence, including receiver-only backups |
+| `sudo -n diaries-backup-history verify BACKUP_ID --logical-dataset production` | both | Full schema-2 verification against selected host's local bytes |
 | `sudo -n btrfs-snapshot-manager list` | both | Snapshot inventory table |
 | `sudo -n btrfs-snapshot-manager prune --dry-run` | both | Endpoint-aware read-only retention preview |
 | `sudo -n btrfs-snapshot-manager prune --max-delete N` | both | Destructive bounded prune; guarded |
@@ -47,6 +49,24 @@ On `mars`, the full `btrfs-backup-status` automatically selects the dedicated
 0041 SSH transport for its read-only sender check. The raw replication CLI
 needs the explicit environment assignment shown above; an unset transport
 mode retains a historical route and must not be used for normal diagnostics.
+
+## 0050 receiver-local Diaries history
+
+The receiver now installs the same `diaries-backup-history`, `diaries-backup-status`
+and independent schema-2 verifier used on the source. The already-existing
+`/etc/btrfs-snapshot-manager.json` gains a `diaries_history` section read only
+by the history tool; the receiver manager's `verification.required` remains
+`false`, and its prune and replication configuration is unchanged. History is
+local to each machine: a backup may be retained on `backup` after it disappears
+from `mars`. `list`, `list --all`, `show`, `path`, `verify`, `--json` and
+`--logical-dataset` retain their existing behaviour and exit codes. `verify`
+performs actual full-content checks and may be I/O intensive; `status` is
+manifest-identity evidence, **not** a full restore or full verification.
+
+0050 installs the receiver commands only when an existing receiver
+manager or receiver-retention installation gate is active; the source continues to receive
+the reader and verifier from the snapshots role. No new SSH/sudo authority,
+prune scheduling, send/receive, holds, or parent state is changed.
 
 ## Safe deployment: same working replication protocol
 
