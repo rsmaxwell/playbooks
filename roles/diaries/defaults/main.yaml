@@ -98,7 +98,7 @@ diaries_web_files_path: "files"
 diaries_image_fragment_writes_enabled: true
 
 diaries_client_image_name: rsmaxwell/diaries-client
-diaries_client_image_tag: "0.0.9-build-76"
+diaries_client_image_tag: "0.0.9-build-77"
 
 diaries_responder_image_name: rsmaxwell/diaries-responder
 diaries_responder_image_tag: "0.0.9-build-84"
