@@ -36,25 +36,19 @@ ${DIARIES_NAS_CONTENT_PATH}/diaries -> /data/diaries:ro
 
 Production does not use the local `config/environments/local.env` override mechanism. The role's explicit inventory variable is the production source of the mutable Files selector. Before deployment, review the rendered `.env`/Compose output and confirm the selected Files root is paired with the intended production PostgreSQL volume/dataset.
 
-## ImageFragment production authoring gate
+## IMAGE authoring in production
 
-The responder authoring gate is rendered from one explicit role variable:
+IMAGE creation, catalogue-image changes, validated links and same-Page optional
+Marquees are now permanent authorised-Editor operations. The 0027/0051 rollout
+variables and responder JSON properties were removed in the 0051 Step 5 cleanup.
+The responder continues to enforce authentication, Editor rights, locks, versions,
+reference integrity and Marquee/URL validation without a feature switch.
 
-```yaml
-diaries_image_fragment_writes_enabled: true
-```
-
-With 0027 completed, the role default is deliberately `true`. IMAGE Fragment creation and Image-reference attach/replace/clear are now normal supported Diaries functionality, and production verification on `pluto` completed the enabled lifecycle with client `0.0.9-build-76`, responder `0.0.9-build-84` and reader `0.0.9-build-8`.
-
-The gate remains an important responder-side safety and non-destructive rollback control. Setting:
-
-```yaml
-diaries_image_fragment_writes_enabled: false
-```
-
-and redeploying/restarting the responder stops new IMAGE Fragment creation and actual Image-reference mutations with 403 responses. It does **not** remove existing IMAGE data, and ordinary IMAGE reads, text/date/sequence edits, locking, normalisation and Fragment deletion remain available because those operations omit/preserve `imageId`.
-
-The generated `config/responder/responder.json` must reflect the effective Ansible value. A target may override the role default in inventory when a temporary authoring stop is required; returning the override to `true` restores normal authoring after the underlying reason has been resolved. No database or Files rollback is required merely to toggle this gate.
+Deploy the rebuilt responder image and this role's gate-free `responder.json`
+template **together**; old responder builds interpret missing gate values as
+writing disabled. Do not roll back to pre-0051 binaries after extension-format
+records have been written. Use supported compatible builds and verified matched
+database/Files backup/restore procedures for recovery.
 
 The production `diaries-client` MQTT identity must also have narrow read access to `diaries/images/+`. IMAGE Fragments resolve `imageId` through those retained catalogue metadata topics; RPC access and Fragment-topic access are not sufficient. Mosquitto file ACLs may acknowledge a subscription while silently withholding unauthorized retained messages, so the permanent deployment-contract regression verifies this client permission explicitly.
 

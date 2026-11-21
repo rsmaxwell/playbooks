@@ -91,20 +91,14 @@ diaries_web_container_name: diaries-web
 # This is emitted into content.filesPath in the generated production web config.
 diaries_web_files_path: "files"
 
-# IMAGE Fragment authoring is normal production behaviour after 0027 close-out.
-# The reader, responder and client rollout prerequisites have passed and the
-# enabled lifecycle has been verified on production. Set this to false for the
-# supported non-destructive authoring stop/rollback.
-diaries_image_fragment_writes_enabled: true
-
 diaries_client_image_name: rsmaxwell/diaries-client
-diaries_client_image_tag: "0.0.9-build-77"
+diaries_client_image_tag: "0.0.9-build-79"
 
 diaries_responder_image_name: rsmaxwell/diaries-responder
-diaries_responder_image_tag: "0.0.9-build-84"
+diaries_responder_image_tag: "0.0.9-build-86"
 
 diaries_web_image_name: rsmaxwell/diaries-web
-diaries_web_image_tag: "0.0.9-build-8"
+diaries_web_image_tag: "0.0.9-build-9"
 
 diaries_hostname: "pluto.rsmaxwell.co.uk"
 

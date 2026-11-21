@@ -36,16 +36,20 @@ SUPPORTED_SCRIPTS = {
     "backup-db-to-binary.sh",
     "backup-db-to-sql.sh",
     "complete-dataset-manifest.py",
+    "complete-dataset-postflight.py",
     "complete-dataset-publisher.py",
     "complete-dataset-replication.py",
-    "complete-dataset-postflight.py",
     "complete-dataset-restore-stage.py",
     "complete-dataset-verification.py",
     "dataset-backup-manifest.py",
+    "fixed-dataset-capture.py",
+    "fixed-dataset-refresh.py",
+    "fixed-dataset-source-guard.py",
     "production-complete-dataset.py",
     "restore-dataset.sh",
     "restore-db-from-binary.sh",
     "restore-db-from-sql.sh",
+    "rolling-files-reuse.py",
 }
 
 # Historical-looking names are not automatically forbidden: a genuinely permanent
@@ -122,19 +126,12 @@ def main() -> int:
                 "production Compose keeps /data/files selected by the explicit Files selector")
         require("local.env" not in compose and "local.env" not in start,
                 "production Compose/start templates do not load local development overrides")
-        require(re.search(r"(?m)^diaries_image_fragment_writes_enabled:\s*true\s*$", defaults) is not None,
-                "production ImageFragment authoring gate defaults enabled after 0027 close-out")
-        require('"imageFragmentWritesEnabled": {{ diaries_image_fragment_writes_enabled | bool | lower }}' in responder_config,
-                "responder config renders the explicit production ImageFragment authoring variable")
-        require("diaries_image_fragment_writes_enabled is boolean" in main_tasks,
-                "Ansible rejects non-boolean production authoring-gate values")
-        require("Validate rendered ImageFragment authoring gate" in copy_tasks and
-                '"imageFragmentWritesEnabled": {{ diaries_image_fragment_writes_enabled | bool | lower }}' in copy_tasks,
-                "Ansible validates the rendered production authoring-gate value")
-        require("diaries_image_fragment_writes_enabled: true" in role_readme and
-                "diaries_image_fragment_writes_enabled: false" in role_readme and
-                "non-destructive" in role_readme,
-                "role documentation defines normal enablement and non-destructive rollback")
+        for retired in ("diaries_image_fragment_writes_enabled",
+                        "diaries_image_fragment_extensions_writes_enabled",
+                        "imageFragmentWritesEnabled", "imageFragmentExtensionsWritesEnabled"):
+            require(retired not in defaults and retired not in responder_config and
+                    retired not in main_tasks and retired not in copy_tasks and retired not in role_readme,
+                    "retired IMAGE authoring gates are absent from permanent production role: " + retired)
         require("one effective database dataset <-> one effective mutable Files root" in role_readme,
                 "role documentation records the durable database/Files pairing invariant")
         require("database-only" in scripts_readme.lower() and "matching mutable Files snapshot" in scripts_readme,

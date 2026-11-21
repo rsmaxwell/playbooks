@@ -59,17 +59,6 @@
   tags:
     - always
 
-- name: diaries | Validate ImageFragment production authoring gate
-  ansible.builtin.assert:
-    that:
-      - diaries_image_fragment_writes_enabled is boolean
-    fail_msg: >-
-      diaries_image_fragment_writes_enabled must be an explicit boolean.
-      Keep it false until 0027 Step 15 production compatibility evidence is green;
-      set it true deliberately in inventory only for the approved enablement.
-  tags:
-    - always
-
 - name: diaries | utilities
   ansible.builtin.import_tasks: utilities.yaml
   tags:

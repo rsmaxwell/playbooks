@@ -110,17 +110,6 @@
   notify: Restart diaries stack
 
 
-- name: diaries:copy | Validate rendered ImageFragment authoring gate
-  ansible.builtin.command:
-    argv:
-      - grep
-      - --fixed-strings
-      - --quiet
-      - '"imageFragmentWritesEnabled": {{ diaries_image_fragment_writes_enabled | bool | lower }}'
-      - "{{ diaries_project_dir }}/config/responder/responder.json"
-  changed_when: false
-
-
 - name: diaries:copy | Validate rendered mutable Files selector in .env
   ansible.builtin.command:
     argv:

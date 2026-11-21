@@ -25,14 +25,23 @@ backup-db-to-binary.sh
 backup-db-to-sql.sh
 complete-dataset-manifest.py
 complete-dataset-postflight.py
+complete-dataset-publisher.py
+complete-dataset-replication.py
 complete-dataset-restore-stage.py
 complete-dataset-verification.py
 dataset-backup-manifest.py
+fixed-dataset-capture.py
+fixed-dataset-refresh.py
+fixed-dataset-source-guard.py
 production-complete-dataset.py
 restore-dataset.sh
 restore-db-from-binary.sh
 restore-db-from-sql.sh
+rolling-files-reuse.py
 ```
+
+The four `fixed-dataset-*` and `rolling-files-reuse.py` helpers originate from 0036. Their presence in the installed script inventory does not mean every optional 0036 path is active. `fixed-dataset-refresh.py` has test coverage but no direct production caller identified in the current source review; its possible retirement requires separate review.
+
 
 The `backup-db-*` and `restore-db-*` commands are **database-only** operations.
 They do not back up or restore the mutable Diaries Files tree.
